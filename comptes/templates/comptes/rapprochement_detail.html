@@ -1,0 +1,92 @@
+{% extends 'comptes/base_comptes.html' %}
+
+{% block compte_content %}
+<div class="max-w-7xl mx-auto px-4 py-6 space-y-6">
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Rapprochement — {{ rapprochement.compte.nom }}</h1>
+            <p class="text-sm text-gray-500">{{ rapprochement.date_debut|date:'d/m/Y' }} → {{ rapprochement.date_fin|date:'d/m/Y' }}</p>
+        </div>
+        <div class="flex gap-2">
+            {% if rapprochement.statut == 'EN_COURS' or rapprochement.statut == 'PARTIEL' %}
+            <form method="post" action="#">
+                {% csrf_token %}
+                <button type="submit" class="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700">
+                    Valider le rapprochement
+                </button>
+            </form>
+            {% endif %}
+            <a href="{% url 'comptes:rapprochement_liste' %}"
+               class="px-4 py-2 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200">
+                Retour
+            </a>
+        </div>
+    </div>
+
+    <!-- Synthèse -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="p-4 bg-white rounded-xl shadow-sm border border-gray-200">
+            <p class="text-xs text-gray-500">Solde relevé</p>
+            <p class="text-xl font-bold text-blue-600">{{ rapprochement.solde_releve|floatformat:0 }}</p>
+        </div>
+        <div class="p-4 bg-white rounded-xl shadow-sm border border-gray-200">
+            <p class="text-xs text-gray-500">Solde comptable</p>
+            <p class="text-xl font-bold text-purple-600">{{ rapprochement.solde_comptable|floatformat:0 }}</p>
+        </div>
+        <div class="p-4 bg-white rounded-xl shadow-sm border border-gray-200">
+            <p class="text-xs text-gray-500">Écart</p>
+            <p class="text-xl font-bold {% if rapprochement.ecart == 0 %}text-green-600{% else %}text-red-600{% endif %}">
+                {{ rapprochement.ecart|floatformat:0 }}
+            </p>
+        </div>
+        <div class="p-4 bg-white rounded-xl shadow-sm border border-gray-200">
+            <p class="text-xs text-gray-500">Statut</p>
+            <p class="text-lg font-bold">{{ rapprochement.get_statut_display }}</p>
+        </div>
+    </div>
+
+    <!-- Lignes -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-100">
+            <h2 class="text-lg font-bold text-gray-900">Lignes de rapprochement</h2>
+        </div>
+        <table class="w-full text-sm">
+            <thead class="bg-gray-50">
+                <tr class="text-gray-500">
+                    <th class="px-5 py-3 text-left">Date</th>
+                    <th class="px-5 py-3 text-left">Type</th>
+                    <th class="px-5 py-3 text-left">Libellé</th>
+                    <th class="px-5 py-3 text-right">Montant</th>
+                    <th class="px-5 py-3 text-center">Pointé</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+                {% for ligne in lignes %}
+                <tr class="hover:bg-gray-50 transition-colors">
+                    <td class="px-5 py-3 text-xs">{{ ligne.date_operation|date:'d/m/Y' }}</td>
+                    <td class="px-5 py-3">
+                        <span class="px-2 py-0.5 rounded-full text-xs
+                            {% if ligne.type_ligne == 'RELEVE' %}bg-amber-50 text-amber-600
+                            {% elif ligne.type_ligne == 'COMPTABLE' %}bg-blue-50 text-blue-600
+                            {% else %}bg-red-50 text-red-600{% endif %}">
+                            {{ ligne.get_type_ligne_display }}
+                        </span>
+                    </td>
+                    <td class="px-5 py-3">{{ ligne.libelle|truncatechars:50 }}</td>
+                    <td class="px-5 py-3 text-right font-bold">{{ ligne.montant|floatformat:0 }}</td>
+                    <td class="px-5 py-3 text-center">
+                        {% if ligne.pointe %}
+                        <span class="text-green-600">✓</span>
+                        {% else %}
+                        <span class="text-gray-300">○</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="px-5 py-8 text-center text-gray-500">Aucune ligne</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,101 @@
+{% extends 'comptes/base_comptes.html' %}
+{% load static %}
+
+{% block compte_content %}
+<div class="max-w-7xl mx-auto px-4 py-6 space-y-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Comptes Financiers</h1>
+            <p class="text-sm text-gray-500">Vue d'ensemble de votre trésorerie</p>
+        </div>
+        <div class="flex gap-2">
+            <a href="{% url 'comptes:ajouter_compte' %}"
+               class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
+                <span class="material-symbols-outlined mr-1">add</span>Nouveau compte
+            </a>
+            <a href="{% url 'comptes:transfert_effectuer' %}"
+               class="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
+                <span class="material-symbols-outlined mr-1">swap_horiz</span>Transfert
+            </a>
+        </div>
+    </div>
+
+    <!-- Synthèse -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="p-5 bg-white rounded-xl shadow-sm border border-gray-200">
+            <p class="text-xs text-gray-500 uppercase tracking-wide">Solde total</p>
+            <p class="text-2xl font-bold text-amber-600 mt-1">{{ synthese.solde_total|floatformat:0 }} F</p>
+        </div>
+        <div class="p-5 bg-white rounded-xl shadow-sm border border-gray-200">
+            <p class="text-xs text-gray-500 uppercase tracking-wide">Flux net 24h</p>
+            <p class="text-2xl font-bold mt-1 {% if flux_net >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
+                {{ flux_net|floatformat:0 }} F
+            </p>
+        </div>
+        <div class="p-5 bg-gradient-to-br from-purple-500 to-purple-700 rounded-xl shadow-sm text-white">
+            <p class="text-xs opacity-80 uppercase tracking-wide">Comptes actifs</p>
+            <p class="text-2xl font-bold mt-1">{{ synthese.nb_comptes_actifs }}</p>
+        </div>
+        <div class="p-5 bg-white rounded-xl shadow-sm border border-gray-200">
+            <p class="text-xs text-gray-500 uppercase tracking-wide">Alertes découvert</p>
+            <p class="text-2xl font-bold mt-1 {% if synthese.alertes_decouvert > 0 %}text-red-600{% else %}text-green-600{% endif %}">
+                {{ synthese.alertes_decouvert }}
+            </p>
+        </div>
+    </div>
+
+    <!-- Comptes -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-100">
+            <h2 class="text-lg font-bold text-gray-900">Comptes</h2>
+        </div>
+        <table class="w-full text-sm">
+            <thead class="bg-gray-50">
+                <tr class="text-gray-500">
+                    <th class="px-5 py-3 text-left font-medium">Code</th>
+                    <th class="px-5 py-3 text-left font-medium">Nom</th>
+                    <th class="px-5 py-3 text-left font-medium">Type</th>
+                    <th class="px-5 py-3 text-right font-medium">Solde</th>
+                    <th class="px-5 py-3 text-center font-medium">Statut</th>
+                    <th class="px-5 py-3 text-center font-medium">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+                {% for c in comptes %}
+                <tr class="hover:bg-gray-50 transition-colors">
+                    <td class="px-5 py-3 font-mono text-xs">{{ c.code }}</td>
+                    <td class="px-5 py-3 font-medium">{{ c.nom }}</td>
+                    <td class="px-5 py-3">{{ c.get_type_display }}</td>
+                    <td class="px-5 py-3 text-right font-bold {% if c.solde_actuel >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
+                        {{ c.solde_actuel|floatformat:0 }} {{ c.devise }}
+                    </td>
+                    <td class="px-5 py-3 text-center">
+                        {% if c.actif %}
+                        <span class="px-2 py-0.5 rounded-full text-xs bg-green-50 text-green-600">Actif</span>
+                        {% else %}
+                        <span class="px-2 py-0.5 rounded-full text-xs bg-red-50 text-red-600">Inactif</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-5 py-3 text-center">
+                        <div class="flex items-center justify-center gap-2">
+                            <a href="{% url 'comptes:detail_compte' c.id %}" class="text-gray-400 hover:text-blue-600">
+                                <span class="material-symbols-outlined">visibility</span>
+                            </a>
+                            <a href="{% url 'comptes:modifier_compte' c.id %}" class="text-gray-400 hover:text-amber-600">
+                                <span class="material-symbols-outlined">edit</span>
+                            </a>
+                            <a href="{% url 'comptes:cloturer_compte' c.id %}" class="text-gray-400 hover:text-purple-600">
+                                <span class="material-symbols-outlined">lock</span>
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="px-5 py-8 text-center text-gray-500">Aucun compte financier</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

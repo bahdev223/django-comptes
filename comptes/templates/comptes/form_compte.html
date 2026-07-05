@@ -1,0 +1,104 @@
+{% extends 'comptes/base_comptes.html' %}
+
+{% block compte_content %}
+<div class="max-w-2xl mx-auto px-4 py-6">
+    <h1 class="text-2xl font-bold text-gray-900 mb-6">
+        {% if mode == 'ajout' %}Nouveau Compte{% else %}Modifier {{ compte.nom }}{% endif %}
+    </h1>
+
+    <form method="post" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-5">
+        {% csrf_token %}
+
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Code *</label>
+                <input type="text" name="code" value="{{ compte.code|default:'' }}" required
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nom *</label>
+                <input type="text" name="nom" value="{{ compte.nom|default:'' }}" required
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Type *</label>
+                <select name="type" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                    <option value="ESPECES" {% if compte.type == 'ESPECES' %}selected{% endif %}>Espèces</option>
+                    <option value="BANQUE" {% if compte.type == 'BANQUE' %}selected{% endif %}>Banque</option>
+                    <option value="MOBILE_MONEY" {% if compte.type == 'MOBILE_MONEY' %}selected{% endif %}>Mobile Money</option>
+                    <option value="CARTE" {% if compte.type == 'CARTE' %}selected{% endif %}>Carte</option>
+                    <option value="PORTEFEUILLE_NUMERIQUE" {% if compte.type == 'PORTEFEUILLE_NUMERIQUE' %}selected{% endif %}>Portefeuille numérique</option>
+                    <option value="AUTRE" {% if compte.type == 'AUTRE' %}selected{% endif %}>Autre</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Rôle</label>
+                <select name="role" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                    <option value="">—</option>
+                    <option value="PRINCIPAL" {% if compte.role == 'PRINCIPAL' %}selected{% endif %}>Principal</option>
+                    <option value="POINT_VENTE" {% if compte.role == 'POINT_VENTE' %}selected{% endif %}>Point de vente</option>
+                    <option value="CAISSE" {% if compte.role == 'CAISSE' %}selected{% endif %}>Caisse</option>
+                    <option value="EPARGNE" {% if compte.role == 'EPARGNE' %}selected{% endif %}>Épargne</option>
+                    <option value="ENCAISSEMENT" {% if compte.role == 'ENCAISSEMENT' %}selected{% endif %}>Encaissement</option>
+                    <option value="DECAISSEMENT" {% if compte.role == 'DECAISSEMENT' %}selected{% endif %}>Décaissement</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Devise</label>
+                <select name="devise" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                    <option value="XOF" {% if compte.devise == 'XOF' %}selected{% endif %}>XOF (FCFA)</option>
+                    <option value="EUR" {% if compte.devise == 'EUR' %}selected{% endif %}>EUR (Euro)</option>
+                    <option value="USD" {% if compte.devise == 'USD' %}selected{% endif %}>USD (Dollar)</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Compte comptable</label>
+                <input type="text" name="compte_comptable_code" value="{{ compte.compte_comptable_code|default:'' }}"
+                       placeholder="ex: 5711"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+            </div>
+            {% if mode == 'ajout' %}
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Solde initial</label>
+                <input type="number" step="0.01" name="solde_initial" value="0"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="flex items-center gap-6">
+            <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="actif" {% if compte.actif or mode == 'ajout' %}checked{% endif %}
+                       class="rounded border-gray-300 text-blue-600">
+                <span>Actif</span>
+            </label>
+            <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="autoriser_decouvert" {% if compte.autoriser_decouvert %}checked{% endif %}
+                       class="rounded border-gray-300 text-blue-600">
+                <span>Autoriser le découvert</span>
+            </label>
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Limite de découvert</label>
+            <input type="number" step="0.01" name="limite_decouvert" value="{{ compte.limite_decouvert|default:'0' }}"
+                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+        </div>
+
+        <div class="flex gap-3 pt-2">
+            <button type="submit"
+                    class="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
+                {% if mode == 'ajout' %}Créer{% else %}Enregistrer{% endif %}
+            </button>
+            <a href="{% url 'comptes:liste_comptes' %}"
+               class="px-5 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200">Annuler</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

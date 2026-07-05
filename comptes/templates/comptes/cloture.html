@@ -1,0 +1,42 @@
+{% extends 'comptes/base_comptes.html' %}
+
+{% block compte_content %}
+<div class="max-w-lg mx-auto px-4 py-6">
+    <h1 class="text-2xl font-bold text-gray-900 mb-2">Clôture du Compte</h1>
+    <p class="text-sm text-gray-500 mb-6">{{ compte.nom }} · {{ compte.code }}</p>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
+        <div class="flex justify-between text-sm">
+            <span class="text-gray-500">Solde actuel</span>
+            <span class="font-bold {% if compte.solde_actuel >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
+                {{ compte.solde_actuel|floatformat:0 }} {{ compte.devise }}
+            </span>
+        </div>
+
+        <form method="post">
+            {% csrf_token %}
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Solde réel constaté *</label>
+                <input type="number" step="0.01" name="solde_reel" value="{{ compte.solde_actuel|floatformat:0 }}"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="mt-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Commentaire</label>
+                <textarea name="commentaire" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                          placeholder="Écart éventuel..."></textarea>
+            </div>
+
+            <div class="flex gap-3 mt-6">
+                <button type="submit"
+                        class="px-5 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700">
+                    Clôturer
+                </button>
+                <a href="{% url 'comptes:dashboard' %}"
+                   class="px-5 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200">
+                    Annuler
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

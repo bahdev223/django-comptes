@@ -1,0 +1,54 @@
+{% extends 'comptes/base_comptes.html' %}
+
+{% block compte_content %}
+<div class="max-w-lg mx-auto px-4 py-6">
+    <h1 class="text-2xl font-bold text-gray-900 mb-6">Transfert entre Comptes</h1>
+
+    <form method="post" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-5">
+        {% csrf_token %}
+
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Source *</label>
+            <select name="source_id" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                <option value="">Sélectionner</option>
+                {% for c in comptes %}
+                <option value="{{ c.id }}">{{ c.nom }} ({{ c.solde_actuel|floatformat:0 }} {{ c.devise }})</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Destination *</label>
+            <select name="dest_id" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                <option value="">Sélectionner</option>
+                {% for c in comptes %}
+                <option value="{{ c.id }}">{{ c.nom }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Montant *</label>
+            <input type="number" step="0.01" name="montant" required placeholder="0"
+                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+            <textarea name="notes" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      placeholder="Motif du transfert..."></textarea>
+        </div>
+
+        <div class="flex gap-3 pt-2">
+            <button type="submit"
+                    class="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
+                Effectuer le transfert
+            </button>
+            <a href="{% url 'comptes:dashboard' %}"
+               class="px-5 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200">
+                Annuler
+            </a>
+        </div>
+    </form>
+</div>
+{% endblock %}

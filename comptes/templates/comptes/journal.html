@@ -1,0 +1,77 @@
+{% extends 'comptes/base_comptes.html' %}
+
+{% block compte_content %}
+<div class="max-w-7xl mx-auto px-4 py-6 space-y-6">
+    <h1 class="text-2xl font-bold text-gray-900">Journal {{ compte.nom|default:'—' }} — {{ date_journal|date:'d/m/Y' }}</h1>
+
+    {% if compte %}
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div class="p-4 bg-white rounded-xl shadow-sm border border-gray-200">
+            <p class="text-xs text-gray-500">Solde ouverture</p>
+            <p class="text-lg font-bold">{{ journal.solde_ouverture|floatformat:0 }}</p>
+        </div>
+        <div class="p-4 bg-green-50 rounded-xl shadow-sm border border-green-200">
+            <p class="text-xs text-green-600">Total entrées</p>
+            <p class="text-lg font-bold text-green-700">{{ journal.total_entrees|floatformat:0 }}</p>
+        </div>
+        <div class="p-4 bg-red-50 rounded-xl shadow-sm border border-red-200">
+            <p class="text-xs text-red-600">Total sorties</p>
+            <p class="text-lg font-bold text-red-700">{{ journal.total_sorties|floatformat:0 }}</p>
+        </div>
+        <div class="p-4 bg-white rounded-xl shadow-sm border border-gray-200">
+            <p class="text-xs text-gray-500">Solde théorique</p>
+            <p class="text-lg font-bold">{{ journal.solde_theorique|floatformat:0 }}</p>
+        </div>
+        <div class="p-4 bg-amber-50 rounded-xl shadow-sm border border-amber-200">
+            <p class="text-xs text-amber-600">Écart</p>
+            <p class="text-lg font-bold {% if journal.ecart == 0 %}text-green-600{% else %}text-red-600{% endif %}">
+                {{ journal.ecart|floatformat:0 }}
+            </p>
+        </div>
+    </div>
+
+    {% if journal.cloture %}
+    <div class="px-4 py-3 bg-green-50 text-green-600 rounded-lg text-sm border border-green-200">
+        Ce journal est clôturé.
+    </div>
+    {% endif %}
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <table class="w-full text-sm">
+            <thead class="bg-gray-50">
+                <tr class="text-gray-500">
+                    <th class="px-5 py-3 text-left">Type</th>
+                    <th class="px-5 py-3 text-left">Libellé</th>
+                    <th class="px-5 py-3 text-right">Montant</th>
+                    <th class="px-5 py-3 text-center">Sens</th>
+                    <th class="px-5 py-3 text-left">Référence</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+                {% for ligne in lignes %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-5 py-3">{{ ligne.type_operation|truncatechars:30 }}</td>
+                    <td class="px-5 py-3">{{ ligne.libelle|truncatechars:40 }}</td>
+                    <td class="px-5 py-3 text-right font-bold">{{ ligne.montant|floatformat:0 }}</td>
+                    <td class="px-5 py-3 text-center">
+                        {% if ligne.sens == 'ENTREE' %}
+                        <span class="text-green-600">Entrée</span>
+                        {% else %}
+                        <span class="text-red-600">Sortie</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-5 py-3 text-xs font-mono">{{ ligne.reference|default:'—' }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="px-5 py-8 text-center text-gray-500">Aucune ligne</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="bg-white rounded-xl p-8 text-center text-gray-500">
+        Sélectionnez un compte et une date pour consulter son journal.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
