@@ -1,12 +1,13 @@
 from decimal import Decimal
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from ..models import (
     Compte,
     MouvementCompte,
     NatureMouvement,
+    SensMouvement,
     StatutMouvement,
 )
 from ..signals.mouvement import mouvement_valide, mouvement_annule
@@ -17,7 +18,7 @@ class MouvementCompteService:
     """Service metier des mouvements de compte."""
 
     @staticmethod
-    def encaisser(compte, montant, libelle, user, reference=None, source=None):
+    def encaisser(compte, montant, libelle, user, reference=None, source=None, idempotency_key=None):
         return MouvementCompteService._creer(
             compte=compte,
             nature=NatureMouvement.ENCAISSEMENT,
@@ -26,15 +27,11 @@ class MouvementCompteService:
             user=user,
             reference=reference,
             source=source,
+            idempotency_key=idempotency_key,
         )
 
     @staticmethod
-    def decaisser(compte, montant, libelle, user, reference=None, source=None):
-        if compte.solde_disponible < montant:
-            raise ValueError(
-                f"Solde insuffisant. Disponible: {compte.solde_disponible:,.0f}, "
-                f"Requis: {montant:,.0f}"
-            )
+    def decaisser(compte, montant, libelle, user, reference=None, source=None, idempotency_key=None):
         return MouvementCompteService._creer(
             compte=compte,
             nature=NatureMouvement.DECAISSEMENT,
@@ -43,10 +40,12 @@ class MouvementCompteService:
             user=user,
             reference=reference,
             source=source,
+            idempotency_key=idempotency_key,
+            verifier_solde=True,
         )
 
     @staticmethod
-    def transfert(compte, montant, libelle, user, reference=None, source=None):
+    def transfert(compte, montant, libelle, user, reference=None, source=None, sens=None):
         return MouvementCompteService._creer(
             compte=compte,
             nature=NatureMouvement.TRANSFERT,
@@ -55,6 +54,7 @@ class MouvementCompteService:
             user=user,
             reference=reference,
             source=source,
+            sens=sens,
         )
 
     @staticmethod
@@ -71,20 +71,53 @@ class MouvementCompteService:
 
     @staticmethod
     @transaction.atomic
-    def _creer(compte, nature, montant, libelle, user, reference=None, source=None):
+    def _creer(
+        compte,
+        nature,
+        montant,
+        libelle,
+        user,
+        reference=None,
+        source=None,
+        idempotency_key=None,
+        verifier_solde=False,
+        sens=None,
+    ):
         montant = Decimal(str(montant))
         if montant <= 0:
             raise ValueError("Le montant doit etre positif")
 
-        mouvement = MouvementCompte.objects.create(
-            compte=compte,
-            nature=nature,
-            statut=StatutMouvement.VALIDE,
-            montant=montant,
-            libelle=libelle,
-            reference=reference,
-            created_by=user,
-        )
+        if idempotency_key:
+            existing = MouvementCompte.objects.filter(idempotency_key=idempotency_key).first()
+            if existing:
+                return existing
+
+        compte = Compte.objects.select_for_update().get(pk=compte.pk)
+        if not compte.actif:
+            raise ValueError(f"Le compte {compte.nom} est inactif")
+        if verifier_solde and compte.solde_disponible < montant:
+            raise ValueError(
+                f"Solde insuffisant. Disponible: {compte.solde_disponible:,.0f}, "
+                f"Requis: {montant:,.0f}"
+            )
+
+        try:
+            with transaction.atomic():
+                mouvement = MouvementCompte.objects.create(
+                    compte=compte,
+                    nature=nature,
+                    statut=StatutMouvement.VALIDE,
+                    sens=sens or MouvementCompteService._sens_par_nature(nature),
+                    montant=montant,
+                    libelle=libelle,
+                    reference=reference,
+                    idempotency_key=idempotency_key,
+                    created_by=user,
+                )
+        except IntegrityError:
+            if idempotency_key:
+                return MouvementCompte.objects.get(idempotency_key=idempotency_key)
+            raise
 
         if source:
             from django.contrib.contenttypes.models import ContentType
@@ -94,7 +127,7 @@ class MouvementCompteService:
             mouvement.object_id = source.pk
             mouvement.save(update_fields=["content_type", "object_id"])
 
-        MouvementCompteService._mettre_a_jour_solde(compte, nature, montant)
+        MouvementCompteService._mettre_a_jour_solde(compte, mouvement.sens, montant)
 
         mouvement_valide.send(
             sender=MouvementCompteService,
@@ -109,6 +142,7 @@ class MouvementCompteService:
     @staticmethod
     @transaction.atomic
     def annuler(mouvement, user, raison=""):
+        mouvement = MouvementCompte.objects.select_for_update().get(pk=mouvement.pk)
         if mouvement.statut == StatutMouvement.ANNULE:
             raise ValueError("Ce mouvement est deja annule")
 
@@ -123,6 +157,7 @@ class MouvementCompteService:
             compte=mouvement.compte,
             nature=NatureMouvement.ANNULATION,
             statut=StatutMouvement.VALIDE,
+            sens=SensMouvement.SORTIE if mouvement.est_entree else SensMouvement.ENTREE,
             montant=mouvement.montant,
             libelle=f"ANNULATION - {mouvement.libelle} - {raison}".strip(),
             reference=mouvement.reference,
@@ -131,7 +166,7 @@ class MouvementCompteService:
         )
 
         MouvementCompteService._mettre_a_jour_solde(
-            mouvement.compte, NatureMouvement.ANNULATION, mouvement.montant
+            mouvement.compte, annulation.sens, mouvement.montant
         )
 
         mouvement_annule.send(
@@ -144,16 +179,19 @@ class MouvementCompteService:
         return annulation
 
     @staticmethod
-    def _mettre_a_jour_solde(compte, nature, montant):
+    def _sens_par_nature(nature):
         if nature in (
             NatureMouvement.ENCAISSEMENT,
             NatureMouvement.TRANSFERT,
             NatureMouvement.AJUSTEMENT,
             NatureMouvement.OUVERTURE,
         ):
-            sign = +1
-        else:
-            sign = -1
+            return SensMouvement.ENTREE
+        return SensMouvement.SORTIE
+
+    @staticmethod
+    def _mettre_a_jour_solde(compte, sens, montant):
+        sign = +1 if sens == SensMouvement.ENTREE else -1
 
         compte.solde_actuel += sign * montant
         compte.save(update_fields=["solde_actuel"])

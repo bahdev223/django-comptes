@@ -130,6 +130,38 @@ class MouvementCompteServiceTest(TestCase):
         mvt.refresh_from_db()
         self.assertTrue(mvt.annule)
 
+    def test_encaissement_idempotent(self):
+        premier = MouvementCompteService.encaisser(
+            compte=self.compte,
+            montant=Decimal("10000.00"),
+            libelle="Paiement API",
+            user=self.user,
+            idempotency_key="payment-123",
+        )
+        second = MouvementCompteService.encaisser(
+            compte=self.compte,
+            montant=Decimal("10000.00"),
+            libelle="Paiement API",
+            user=self.user,
+            idempotency_key="payment-123",
+        )
+
+        self.assertEqual(premier.pk, second.pk)
+        self.compte.refresh_from_db()
+        self.assertEqual(self.compte.solde_actuel, Decimal("60000.00"))
+
+    def test_mouvement_valide_immutable(self):
+        mouvement = MouvementCompteService.encaisser(
+            compte=self.compte,
+            montant=Decimal("10000.00"),
+            libelle="Paiement API",
+            user=self.user,
+        )
+        mouvement.montant = Decimal("1.00")
+
+        with self.assertRaisesRegex(ValueError, "ne peut pas être modifié"):
+            mouvement.save()
+
 
 class TransfertCompteServiceTest(TestCase):
     def setUp(self):
@@ -168,6 +200,28 @@ class TransfertCompteServiceTest(TestCase):
                 source=self.source, destination=self.dest,
                 montant=Decimal("999999.00"), user=self.user,
             )
+
+    def test_transfert_idempotent(self):
+        premier = TransfertCompteService.transferer(
+            source=self.source,
+            destination=self.dest,
+            montant=Decimal("40000.00"),
+            user=self.user,
+            idempotency_key="transfer-123",
+        )
+        second = TransfertCompteService.transferer(
+            source=self.source,
+            destination=self.dest,
+            montant=Decimal("40000.00"),
+            user=self.user,
+            idempotency_key="transfer-123",
+        )
+
+        self.assertEqual(premier.pk, second.pk)
+        self.source.refresh_from_db()
+        self.dest.refresh_from_db()
+        self.assertEqual(self.source.solde_actuel, Decimal("60000.00"))
+        self.assertEqual(self.dest.solde_actuel, Decimal("40000.00"))
 
 
 class ClotureCompteServiceTest(TestCase):

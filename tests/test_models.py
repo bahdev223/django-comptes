@@ -10,9 +10,10 @@ from decimal import Decimal
 from datetime import date, timedelta
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.db import IntegrityError
 
 from comptes.models import (
-    Compte, ModePaiement, TypeCompte, RoleCompte,
+    Compte, Devise, ModePaiement, TypeCompte, RoleCompte,
     MouvementCompte, NatureMouvement, StatutMouvement,
     TransfertCompte, JournalCompte, LigneJournalCompte,
     ClotureCompte, PeriodeCloture,
@@ -39,7 +40,23 @@ class CompteModelTest(TestCase):
         self.assertEqual(self.compte.nom, "Caisse Principale")
         self.assertEqual(self.compte.type, "ESPECES")
         self.assertEqual(self.compte.role, "PRINCIPAL")
-        self.assertEqual(self.compte.devise, "XOF")
+        self.assertEqual(self.compte.devise.code, "XOF")
+
+    def test_devise_personnalisee(self):
+        devise = Devise.objects.create(
+            code="PTS", nom="Points fidélité", decimales=0, est_personnalisee=True
+        )
+        compte = Compte.objects.create(code="PTS-001", nom="Points", devise=devise)
+
+        self.assertEqual(compte.devise, devise)
+        self.assertTrue(compte.devise.est_personnalisee)
+
+    def test_xof_est_precharge_selon_iso_4217(self):
+        xof = Devise.objects.get(code="XOF")
+
+        self.assertEqual(xof.code_numerique, "952")
+        self.assertEqual(xof.decimales, 0)
+        self.assertEqual(xof.symbole, "F CFA")
         self.assertTrue(self.compte.actif)
         self.assertFalse(self.compte.autoriser_decouvert)
 
@@ -133,6 +150,14 @@ class MouvementCompteModelTest(TestCase):
             )
             self.assertEqual(mvt.statut, statut)
 
+    def test_montant_mouvement_doit_etre_positif(self):
+        with self.assertRaises(IntegrityError):
+            MouvementCompte.objects.create(
+                compte=self.compte,
+                montant=Decimal("0.00"),
+                libelle="Montant invalide",
+            )
+
 
 class TransfertCompteModelTest(TestCase):
     def setUp(self):
@@ -155,6 +180,15 @@ class TransfertCompteModelTest(TestCase):
         self.assertEqual(t.montant, Decimal("30000.00"))
         self.assertIn("SRC-001", str(t))
         self.assertIn("DST-001", str(t))
+
+    def test_transfert_ne_peut_pas_utiliser_le_meme_compte(self):
+        with self.assertRaises(IntegrityError):
+            TransfertCompte.objects.create(
+                source=self.source,
+                destination=self.source,
+                montant=Decimal("30000.00"),
+                reference="TRF-INVALID",
+            )
 
 
 class JournalCompteModelTest(TestCase):

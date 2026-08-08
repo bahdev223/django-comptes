@@ -1,10 +1,10 @@
 from decimal import Decimal
 
-from django.db.models import Sum
+from django.db.models import Case, DecimalField, F, Sum, When
 from django.utils import timezone
 
 from ..models import Compte, MouvementCompte, HistoriqueCompte
-from ..models import NatureMouvement, StatutMouvement, TypeChangement
+from ..models import NatureMouvement, SensMouvement, StatutMouvement, TypeChangement
 
 
 class CompteService:
@@ -12,10 +12,12 @@ class CompteService:
 
     @staticmethod
     def creer(code, nom, type_compte, **kwargs):
+        solde_initial = kwargs.pop("solde_initial", Decimal("0.00"))
         defaults = {
             "role": kwargs.pop("role", None),
-            "devise": kwargs.pop("devise", "XOF"),
-            "solde_actuel": kwargs.pop("solde_initial", Decimal("0.00")),
+            "devise_id": kwargs.pop("devise", "XOF"),
+            "solde_initial": solde_initial,
+            "solde_actuel": solde_initial,
             "actif": kwargs.pop("actif", True),
             "autoriser_decouvert": kwargs.pop("autoriser_decouvert", False),
             "limite_decouvert": kwargs.pop("limite_decouvert", Decimal("0.00")),
@@ -79,34 +81,28 @@ class CompteService:
     @staticmethod
     def recalculer_solde(compte):
         """Recalcule le solde a partir de tous les mouvements valides."""
-        total_entrees = (
-            MouvementCompte.objects.filter(
-                compte=compte,
-                statut=StatutMouvement.VALIDE,
+        mouvements = MouvementCompte.objects.filter(
+            compte=compte,
+            statut__in=[StatutMouvement.VALIDE, StatutMouvement.RAPPROCHE],
+        )
+        signe = Case(
+            When(sens=SensMouvement.ENTREE, then=F("montant")),
+            When(sens=SensMouvement.SORTIE, then=-F("montant")),
+            When(
                 nature__in=[
                     NatureMouvement.ENCAISSEMENT,
                     NatureMouvement.TRANSFERT,
                     NatureMouvement.AJUSTEMENT,
                     NatureMouvement.OUVERTURE,
                 ],
-            ).aggregate(total=Sum("montant"))["total"]
-            or Decimal("0.00")
+                then=F("montant"),
+            ),
+            default=-F("montant"),
+            output_field=DecimalField(max_digits=15, decimal_places=2),
         )
-
-        total_sorties = (
-            MouvementCompte.objects.filter(
-                compte=compte,
-                statut=StatutMouvement.VALIDE,
-                nature__in=[
-                    NatureMouvement.DECAISSEMENT,
-                    NatureMouvement.ANNULATION,
-                    NatureMouvement.CLOTURE,
-                ],
-            ).aggregate(total=Sum("montant"))["total"]
-            or Decimal("0.00")
+        nouveau_solde = compte.solde_initial + (
+            mouvements.aggregate(total=Sum(signe))["total"] or Decimal("0.00")
         )
-
-        nouveau_solde = total_entrees - total_sorties
         compte.solde_actuel = nouveau_solde
         compte.dernier_recalcul = timezone.now()
         compte.save(update_fields=["solde_actuel", "dernier_recalcul"])

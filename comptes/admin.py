@@ -5,7 +5,7 @@ from .models import (
     Compte, MouvementCompte, TransfertCompte,
     JournalCompte, LigneJournalCompte,
     RapprochementBancaire, LigneRapprochement,
-    ClotureCompte, HistoriqueCompte, CompteFavori, ModePaiement,
+    ClotureCompte, HistoriqueCompte, CompteFavori, Devise, ModePaiement,
 )
 
 
@@ -37,17 +37,24 @@ class CompteAdmin(admin.ModelAdmin):
     ]
     list_filter = ["type", "role", "actif", "devise"]
     search_fields = ["code", "nom"]
-    readonly_fields = ["solde_actuel", "dernier_recalcul", "created_at", "updated_at"]
+    readonly_fields = ["solde_initial", "solde_actuel", "dernier_recalcul", "created_at", "updated_at"]
     inlines = [MouvementCompteInline]
     fieldsets = (
         (None, {"fields": ("code", "nom", "type", "role")}),
         (_("Devise"), {"fields": ("devise", "taux_change", "devise_reference")}),
-        (_("Solde"), {"fields": ("solde_actuel", "dernier_recalcul")}),
+        (_("Solde"), {"fields": ("solde_initial", "solde_actuel", "dernier_recalcul")}),
         (_("Découvert"), {"fields": ("autoriser_decouvert", "limite_decouvert")}),
         (_("Statut"), {"fields": ("actif", "date_ouverture", "date_fermeture")}),
         (_("Comptabilité"), {"fields": ("compte_comptable_code",)}),
         (_("Dates"), {"fields": ("created_at", "updated_at")}),
     )
+
+
+@admin.register(Devise)
+class DeviseAdmin(admin.ModelAdmin):
+    list_display = ["code", "nom", "symbole", "decimales", "est_personnalisee", "actif"]
+    list_filter = ["est_personnalisee", "actif"]
+    search_fields = ["code", "nom", "symbole"]
 
 
 @admin.register(ModePaiement)

@@ -40,3 +40,6 @@ Documentation = "https://github.com/bah-dev/django-comptes#readme"
 
 [tool.setuptools.packages.find]
 include = ["comptes*"]
+
+[tool.setuptools.package-data]
+comptes = ["fixtures/*.csv"]

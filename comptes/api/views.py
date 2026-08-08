@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..models import (
-    Compte, ModePaiement, MouvementCompte, TransfertCompte,
+    Compte, Devise, ModePaiement, MouvementCompte, TransfertCompte,
     JournalCompte, RapprochementBancaire, ClotureCompte,
 )
 from ..services import (
@@ -12,7 +12,7 @@ from ..services import (
 )
 from ..selectors import DashboardSelector, MouvementSelector
 from .serializers import (
-    CompteSerializer, ModePaiementSerializer, MouvementCompteSerializer,
+    CompteSerializer, DeviseSerializer, ModePaiementSerializer, MouvementCompteSerializer,
     TransfertCompteSerializer, JournalCompteSerializer,
     RapprochementBancaireSerializer, ClotureCompteSerializer,
 )
@@ -62,6 +62,14 @@ class ModePaiementViewSet(viewsets.ModelViewSet):
     search_fields = ["code", "libelle"]
 
 
+class DeviseViewSet(viewsets.ModelViewSet):
+    queryset = Devise.objects.all()
+    serializer_class = DeviseSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filterset_fields = ["actif", "est_personnalisee"]
+    search_fields = ["code", "nom", "symbole"]
+
+
 class MouvementCompteViewSet(viewsets.ModelViewSet):
     queryset = MouvementCompte.objects.select_related("compte", "created_by")
     serializer_class = MouvementCompteSerializer
@@ -81,6 +89,7 @@ class MouvementCompteViewSet(viewsets.ModelViewSet):
             libelle=request.data.get("libelle", ""),
             user=request.user,
             reference=request.data.get("reference", ""),
+            idempotency_key=request.data.get("idempotency_key"),
         )
         return Response(MouvementCompteSerializer(mvt).data, status=status.HTTP_201_CREATED)
 
@@ -93,6 +102,7 @@ class MouvementCompteViewSet(viewsets.ModelViewSet):
             libelle=request.data.get("libelle", ""),
             user=request.user,
             reference=request.data.get("reference", ""),
+            idempotency_key=request.data.get("idempotency_key"),
         )
         return Response(MouvementCompteSerializer(mvt).data, status=status.HTTP_201_CREATED)
 
@@ -120,6 +130,7 @@ class TransfertCompteViewSet(viewsets.ModelViewSet):
             montant=request.data["montant"],
             user=request.user,
             notes=request.data.get("notes", ""),
+            idempotency_key=request.data.get("idempotency_key"),
         )
         return Response(TransfertCompteSerializer(transfert).data, status=status.HTTP_201_CREATED)
 

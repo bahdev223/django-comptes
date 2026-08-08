@@ -46,4 +46,8 @@ class HistoriqueCompte(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"{self.compte.nom} - {self.get_type_changement_display()} - {self.created_at:%d/%m/%Y %H:%M}"
+        return (
+            f"{self.compte.nom} - {self.get_type_changement_display()} - "
+            f"{self.ancienne_valeur} → {self.nouvelle_valeur} - "
+            f"{self.created_at:%d/%m/%Y %H:%M}"
+        )

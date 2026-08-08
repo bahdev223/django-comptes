@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import F, Q
 from django.utils.translation import gettext_lazy as _
 
 from .compte import Compte
@@ -42,6 +43,12 @@ class RapprochementBancaire(models.Model):
         verbose_name = _("Rapprochement bancaire")
         verbose_name_plural = _("Rapprochements bancaires")
         ordering = ["-date_fin"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(date_debut__lte=F("date_fin")),
+                name="rapprochement_periode_valide",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.compte.nom} - {self.date_debut} → {self.date_fin}"

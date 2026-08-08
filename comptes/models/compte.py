@@ -33,7 +33,15 @@ class Compte(models.Model):
     role = models.CharField(
         _("Rôle"), max_length=20, choices=RoleCompte.choices, blank=True, null=True
     )
-    devise = models.CharField(_("Devise"), max_length=10, default="XOF")
+    devise = models.ForeignKey(
+        "Devise",
+        to_field="code",
+        db_column="devise",
+        on_delete=models.PROTECT,
+        related_name="comptes",
+        verbose_name=_("Devise"),
+        default="XOF",
+    )
     taux_change = models.DecimalField(
         _("Taux de change"), max_digits=12, decimal_places=6, default=Decimal("1.000000")
     )
@@ -43,6 +51,9 @@ class Compte(models.Model):
 
     solde_actuel = models.DecimalField(
         _("Solde actuel"), max_digits=15, decimal_places=2, default=Decimal("0.00")
+    )
+    solde_initial = models.DecimalField(
+        _("Solde initial"), max_digits=15, decimal_places=2, default=Decimal("0.00")
     )
     dernier_recalcul = models.DateTimeField(
         _("Dernier recalcul du solde"), blank=True, null=True
@@ -76,6 +87,12 @@ class Compte(models.Model):
 
     def __str__(self):
         return f"{self.code} - {self.nom}"
+
+    def save(self, *args, **kwargs):
+        # Préserve l'ouverture pour permettre un recalcul de solde déterministe.
+        if self._state.adding and self.solde_initial == Decimal("0.00") and self.solde_actuel != Decimal("0.00"):
+            self.solde_initial = self.solde_actuel
+        return super().save(*args, **kwargs)
 
     @property
     def solde_disponible(self):

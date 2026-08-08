@@ -2,7 +2,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.shortcuts import render, redirect, get_object_or_404
 
-from ..models import Compte
+from ..models import Compte, Devise
 from ..services import CompteService
 from ..selectors import DashboardSelector
 
@@ -53,7 +53,11 @@ def ajouter_compte(request):
             return redirect("comptes:detail_compte", compte_id=compte.id)
         except Exception as e:
             messages.error(request, str(e))
-    return render(request, "comptes/form_compte.html", {"mode": "ajout"})
+    return render(
+        request,
+        "comptes/form_compte.html",
+        {"mode": "ajout", "devises": Devise.objects.filter(actif=True)},
+    )
 
 
 @login_required
@@ -76,4 +80,12 @@ def modifier_compte(request, compte_id):
             return redirect("comptes:detail_compte", compte_id=compte.id)
         except Exception as e:
             messages.error(request, str(e))
-    return render(request, "comptes/form_compte.html", {"mode": "modification", "compte": compte})
+    return render(
+        request,
+        "comptes/form_compte.html",
+        {
+            "mode": "modification",
+            "compte": compte,
+            "devises": Devise.objects.filter(actif=True),
+        },
+    )

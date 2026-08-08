@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from ..models import (
-    Compte, ModePaiement, MouvementCompte, TransfertCompte,
+    Compte, Devise, ModePaiement, MouvementCompte, TransfertCompte,
     JournalCompte, RapprochementBancaire, ClotureCompte,
 )
 
@@ -12,12 +12,21 @@ class CompteSerializer(serializers.ModelSerializer):
         fields = [
             "id", "code", "nom", "type", "role",
             "devise", "taux_change", "devise_reference",
-            "solde_actuel", "solde_disponible",
+            "solde_initial", "solde_actuel", "solde_disponible",
             "actif", "autoriser_decouvert", "limite_decouvert",
             "date_ouverture", "date_fermeture",
             "compte_comptable_code",
         ]
-        read_only_fields = ["solde_actuel", "date_ouverture"]
+        read_only_fields = ["solde_initial", "solde_actuel", "date_ouverture"]
+
+
+class DeviseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Devise
+        fields = [
+            "id", "code", "nom", "code_numerique", "decimales", "symbole",
+            "est_personnalisee", "actif",
+        ]
 
 
 class ModePaiementSerializer(serializers.ModelSerializer):
@@ -41,8 +50,8 @@ class MouvementCompteSerializer(serializers.ModelSerializer):
         model = MouvementCompte
         fields = [
             "id", "compte", "compte_nom", "compte_code",
-            "nature", "statut", "montant", "libelle",
-            "reference", "date", "created_by",
+            "nature", "statut", "sens", "montant", "libelle",
+            "reference", "idempotency_key", "date", "created_by",
             "annule", "annule_le", "mouvement_parent",
         ]
         read_only_fields = ["date", "annule", "annule_le"]
