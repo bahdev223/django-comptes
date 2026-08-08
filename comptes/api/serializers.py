@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from ..models import (
-    Compte, MouvementCompte, TransfertCompte,
+    Compte, ModePaiement, MouvementCompte, TransfertCompte,
     JournalCompte, RapprochementBancaire, ClotureCompte,
 )
 
@@ -18,6 +18,19 @@ class CompteSerializer(serializers.ModelSerializer):
             "compte_comptable_code",
         ]
         read_only_fields = ["solde_actuel", "date_ouverture"]
+
+
+class ModePaiementSerializer(serializers.ModelSerializer):
+    comptes = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Compte.objects.all(),
+        required=False,
+    )
+
+    class Meta:
+        model = ModePaiement
+        fields = ["id", "code", "libelle", "actif", "comptes", "created_at", "updated_at"]
+        read_only_fields = ["created_at", "updated_at"]
 
 
 class MouvementCompteSerializer(serializers.ModelSerializer):

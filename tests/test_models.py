@@ -12,7 +12,7 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 
 from comptes.models import (
-    Compte, TypeCompte, RoleCompte,
+    Compte, ModePaiement, TypeCompte, RoleCompte,
     MouvementCompte, NatureMouvement, StatutMouvement,
     TransfertCompte, JournalCompte, LigneJournalCompte,
     ClotureCompte, PeriodeCloture,
@@ -64,6 +64,27 @@ class CompteModelTest(TestCase):
 
     def test_string_representation(self):
         self.assertEqual(str(self.compte), "C-001 - Caisse Principale")
+
+
+class ModePaiementModelTest(TestCase):
+    def test_mode_configurable_lie_a_plusieurs_comptes(self):
+        caisse = Compte.objects.create(code="C-ESPECES", nom="Caisse")
+        caisse_secondaire = Compte.objects.create(
+            code="C-ESPECES-2", nom="Caisse secondaire"
+        )
+        especes = ModePaiement.objects.create(code=" especes ", libelle=" Espèces ")
+        especes.comptes.add(caisse, caisse_secondaire)
+
+        self.assertEqual(especes.code, "ESPECES")
+        self.assertEqual(especes.libelle, "Espèces")
+        self.assertQuerySetEqual(
+            especes.comptes.order_by("code"),
+            [caisse, caisse_secondaire],
+            ordered=True,
+        )
+        self.assertQuerySetEqual(
+            caisse.modes_paiement.all(), [especes], ordered=True
+        )
 
 
 class MouvementCompteModelTest(TestCase):

@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..models import (
-    Compte, MouvementCompte, TransfertCompte,
+    Compte, ModePaiement, MouvementCompte, TransfertCompte,
     JournalCompte, RapprochementBancaire, ClotureCompte,
 )
 from ..services import (
@@ -12,7 +12,7 @@ from ..services import (
 )
 from ..selectors import DashboardSelector, MouvementSelector
 from .serializers import (
-    CompteSerializer, MouvementCompteSerializer,
+    CompteSerializer, ModePaiementSerializer, MouvementCompteSerializer,
     TransfertCompteSerializer, JournalCompteSerializer,
     RapprochementBancaireSerializer, ClotureCompteSerializer,
 )
@@ -50,6 +50,16 @@ class CompteViewSet(viewsets.ModelViewSet):
     def synthese(self, request):
         selector = DashboardSelector()
         return Response(selector.synthese_globale())
+
+
+class ModePaiementViewSet(viewsets.ModelViewSet):
+    """Référentiel des seuls modes de paiement acceptés par l'organisation."""
+
+    queryset = ModePaiement.objects.prefetch_related("comptes")
+    serializer_class = ModePaiementSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filterset_fields = ["actif", "comptes"]
+    search_fields = ["code", "libelle"]
 
 
 class MouvementCompteViewSet(viewsets.ModelViewSet):

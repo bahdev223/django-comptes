@@ -5,7 +5,7 @@ from .models import (
     Compte, MouvementCompte, TransfertCompte,
     JournalCompte, LigneJournalCompte,
     RapprochementBancaire, LigneRapprochement,
-    ClotureCompte, HistoriqueCompte, CompteFavori,
+    ClotureCompte, HistoriqueCompte, CompteFavori, ModePaiement,
 )
 
 
@@ -48,6 +48,14 @@ class CompteAdmin(admin.ModelAdmin):
         (_("Comptabilité"), {"fields": ("compte_comptable_code",)}),
         (_("Dates"), {"fields": ("created_at", "updated_at")}),
     )
+
+
+@admin.register(ModePaiement)
+class ModePaiementAdmin(admin.ModelAdmin):
+    list_display = ["code", "libelle", "actif"]
+    list_filter = ["actif"]
+    search_fields = ["code", "libelle"]
+    filter_horizontal = ["comptes"]
 
 
 @admin.register(MouvementCompte)
