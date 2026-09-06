@@ -4,6 +4,7 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 from .managers import ComptesManager
+from ..defaults import default_currency
 
 
 class TypeCompte(models.TextChoices):
@@ -25,7 +26,7 @@ class RoleCompte(models.TextChoices):
 
 
 class Compte(models.Model):
-    code = models.CharField(_("Code"), max_length=20, unique=True)
+    code = models.CharField(_("Code"), max_length=20)
     nom = models.CharField(_("Nom"), max_length=200)
     type = models.CharField(
         _("Type"), max_length=30, choices=TypeCompte.choices, default=TypeCompte.ESPECES
@@ -40,7 +41,7 @@ class Compte(models.Model):
         on_delete=models.PROTECT,
         related_name="comptes",
         verbose_name=_("Devise"),
-        default="XOF",
+        default=default_currency,
     )
     taux_change = models.DecimalField(
         _("Taux de change"), max_digits=12, decimal_places=6, default=Decimal("1.000000")
@@ -80,10 +81,28 @@ class Compte(models.Model):
 
     objects = ComptesManager()
 
+    # Preparation multi-entreprises. Vide tant que l'application ne sert
+    # qu'une entreprise ; le projet hote y place l'identifiant de son
+    # organisation le jour ou il en gere plusieurs. Un CharField plutot
+    # qu'une cle etrangere : le paquet reste ainsi utilisable sans
+    # connaitre le modele d'organisation de l'hote.
+    entreprise_id = models.CharField(max_length=255, blank=True, default="", db_index=True)
+
     class Meta:
+        # Unicite par entreprise plutot que globale : deux entreprises
+        # doivent pouvoir employer le meme code.
+        unique_together = [["entreprise_id", "code"]]
         verbose_name = _("Compte financier")
         verbose_name_plural = _("Comptes financiers")
         ordering = ["code"]
+        permissions = [
+            ("encaisser", "Peut encaisser sur un compte"),
+            ("decaisser", "Peut décaisser depuis un compte"),
+            ("transferer", "Peut transférer entre comptes"),
+            ("annuler", "Peut annuler un mouvement"),
+            ("cloturer", "Peut clôturer un compte"),
+            ("rapprocher", "Peut rapprocher un compte"),
+        ]
 
     def __str__(self):
         return f"{self.code} - {self.nom}"

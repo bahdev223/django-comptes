@@ -90,6 +90,9 @@ class JournalCompteAdmin(admin.ModelAdmin):
         "solde_reel", "ecart", "cloture",
     ]
     list_filter = ["cloture", "date_journal"]
+    # Requis par LigneJournalCompteAdmin.autocomplete_fields : sans cela
+    # Django refuse de demarrer (admin.E040).
+    search_fields = ["compte__code", "compte__nom"]
     autocomplete_fields = ["compte"]
     readonly_fields = [
         "date_journal", "solde_ouverture", "total_entrees",
