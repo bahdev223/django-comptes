@@ -18,3 +18,16 @@ urlpatterns = [
     path("rapprochement/<int:rapprochement_id>/", views.rapprochement_detail, name="rapprochement_detail"),
     path("rapprochement/initialiser/", views.rapprochement_initialiser, name="rapprochement_initialiser"),
 ]
+
+# --- Modal HTMX URLs (wrapper views) ---
+from apps.comptes_wrapper.views_htmx import (
+    ajouter_compte_modal,
+    modifier_compte_modal,
+    cloturer_compte_modal,
+)
+
+urlpatterns += [
+    path("comptes/ajouter/modal/", ajouter_compte_modal, name="ajouter_compte_modal"),
+    path("comptes/<int:pk>/modifier/modal/", modifier_compte_modal, name="modifier_compte_modal"),
+    path("comptes/<int:pk>/cloturer/modal/", cloturer_compte_modal, name="cloturer_compte_modal"),
+]

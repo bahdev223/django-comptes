@@ -11,6 +11,8 @@ from ..models import (
     StatutMouvement,
 )
 from ..signals.mouvement import mouvement_valide, mouvement_annule
+from ..defaults import get_comptes_setting
+from ..permissions import require_comptes_permission
 from .compte_service import CompteService
 
 
@@ -19,6 +21,7 @@ class MouvementCompteService:
 
     @staticmethod
     def encaisser(compte, montant, libelle, user, reference=None, source=None, idempotency_key=None):
+        require_comptes_permission(user, "encaisser")
         return MouvementCompteService._creer(
             compte=compte,
             nature=NatureMouvement.ENCAISSEMENT,
@@ -32,6 +35,7 @@ class MouvementCompteService:
 
     @staticmethod
     def decaisser(compte, montant, libelle, user, reference=None, source=None, idempotency_key=None):
+        require_comptes_permission(user, "decaisser")
         return MouvementCompteService._creer(
             compte=compte,
             nature=NatureMouvement.DECAISSEMENT,
@@ -58,7 +62,8 @@ class MouvementCompteService:
         )
 
     @staticmethod
-    def ajuster(compte, montant, libelle, user, reference=None, source=None):
+    def ajuster(compte, montant, libelle, user, reference=None, source=None, idempotency_key=None, sens=None):
+        require_comptes_permission(user, "change_compte")
         return MouvementCompteService._creer(
             compte=compte,
             nature=NatureMouvement.AJUSTEMENT,
@@ -67,6 +72,8 @@ class MouvementCompteService:
             user=user,
             reference=reference,
             source=source,
+            idempotency_key=idempotency_key,
+            sens=sens,
         )
 
     @staticmethod
@@ -95,11 +102,43 @@ class MouvementCompteService:
         compte = Compte.objects.select_for_update().get(pk=compte.pk)
         if not compte.actif:
             raise ValueError(f"Le compte {compte.nom} est inactif")
-        if verifier_solde and compte.solde_disponible < montant:
+        if get_comptes_setting("LOCK_CLOSED_PERIODS", True):
+            from datetime import date
+            from ..models import ClotureCompte, PeriodeCloture
+
+            if ClotureCompte.objects.filter(
+                compte=compte,
+                periode=PeriodeCloture.QUOTIDIENNE,
+                date_cloture=date.today(),
+            ).exists():
+                raise ValueError("Ce compte est clôturé pour aujourd'hui.")
+
+        autoriser_decouvert = (
+            get_comptes_setting("ALLOW_OVERDRAFT", False) and compte.autoriser_decouvert
+        )
+        disponible = (
+            compte.solde_actuel + compte.limite_decouvert
+            if autoriser_decouvert else compte.solde_actuel
+        )
+        if verifier_solde and disponible < montant:
             raise ValueError(
-                f"Solde insuffisant. Disponible: {compte.solde_disponible:,.0f}, "
+                f"Solde insuffisant. Disponible: {disponible:,.0f}, "
                 f"Requis: {montant:,.0f}"
             )
+
+        # Le lien vers l'objet d'origine est pose a la creation, et non
+        # apres : content_type et object_id figurent parmi les champs
+        # proteges par save(), qui refuse toute modification d'un
+        # mouvement deja valide. Le renseigner ensuite levait donc
+        # systematiquement, et le parametre source etait inutilisable.
+        lien = {}
+        if source:
+            from django.contrib.contenttypes.models import ContentType
+
+            lien = {
+                "content_type": ContentType.objects.get_for_model(source),
+                "object_id": source.pk,
+            }
 
         try:
             with transaction.atomic():
@@ -113,35 +152,30 @@ class MouvementCompteService:
                     reference=reference,
                     idempotency_key=idempotency_key,
                     created_by=user,
+                    **lien,
                 )
         except IntegrityError:
             if idempotency_key:
                 return MouvementCompte.objects.get(idempotency_key=idempotency_key)
             raise
 
-        if source:
-            from django.contrib.contenttypes.models import ContentType
-
-            ct = ContentType.objects.get_for_model(source)
-            mouvement.content_type = ct
-            mouvement.object_id = source.pk
-            mouvement.save(update_fields=["content_type", "object_id"])
-
         MouvementCompteService._mettre_a_jour_solde(compte, mouvement.sens, montant)
 
-        mouvement_valide.send(
+        if get_comptes_setting("EMIT_DOMAIN_EVENTS", True):
+            transaction.on_commit(lambda: mouvement_valide.send(
             sender=MouvementCompteService,
             instance=mouvement,
             nature=nature,
             montant=montant,
             user=user,
-        )
+            ))
 
         return mouvement
 
     @staticmethod
     @transaction.atomic
     def annuler(mouvement, user, raison=""):
+        require_comptes_permission(user, "annuler")
         mouvement = MouvementCompte.objects.select_for_update().get(pk=mouvement.pk)
         if mouvement.statut == StatutMouvement.ANNULE:
             raise ValueError("Ce mouvement est deja annule")
@@ -169,12 +203,13 @@ class MouvementCompteService:
             mouvement.compte, annulation.sens, mouvement.montant
         )
 
-        mouvement_annule.send(
+        if get_comptes_setting("EMIT_DOMAIN_EVENTS", True):
+            transaction.on_commit(lambda: mouvement_annule.send(
             sender=MouvementCompteService,
             instance=mouvement,
             annulation=annulation,
             user=user,
-        )
+            ))
 
         return annulation
 

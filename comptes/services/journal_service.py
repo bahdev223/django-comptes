@@ -35,24 +35,8 @@ class JournalCompteService:
             statut=StatutMouvement.VALIDE,
         )
 
-        entrees = (
-            mouvements.filter(
-                nature__in=[
-                    NatureMouvement.ENCAISSEMENT,
-                    NatureMouvement.TRANSFERT,
-                    NatureMouvement.AJUSTEMENT,
-                    NatureMouvement.OUVERTURE,
-                ]
-            ).aggregate(total=Sum("montant"))["total"]
-            or Decimal("0.00")
-        )
-
-        sorties = (
-            mouvements.filter(
-                nature__in=[NatureMouvement.DECAISSEMENT, NatureMouvement.ANNULATION]
-            ).aggregate(total=Sum("montant"))["total"]
-            or Decimal("0.00")
-        )
+        entrees = sum((m.montant for m in mouvements if m.est_entree), Decimal("0.00"))
+        sorties = sum((m.montant for m in mouvements if m.est_sortie), Decimal("0.00"))
 
         return entrees, sorties
 
@@ -67,12 +51,7 @@ class JournalCompteService:
 
         lignes = []
         for mvt in mouvements:
-            sens = "ENTREE" if mvt.nature in (
-                NatureMouvement.ENCAISSEMENT,
-                NatureMouvement.TRANSFERT,
-                NatureMouvement.AJUSTEMENT,
-                NatureMouvement.OUVERTURE,
-            ) else "SORTIE"
+            sens = "ENTREE" if mvt.est_entree else "SORTIE"
 
             ligne, created = LigneJournalCompte.objects.get_or_create(
                 journal=journal,

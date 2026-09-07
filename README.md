@@ -49,7 +49,7 @@ INSTALLED_APPS = [
 urlpatterns = [
     ...
     path('comptes/', include('comptes.urls')),
-    path('api/comptes/', include('comptes.urls_api')),
+    path('api/', include('comptes.urls_api')),
 ]
 ```
 

@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Case, DecimalField, F, Sum, When
 from django.utils import timezone
 
 from ..models import (
@@ -11,6 +11,7 @@ from ..models import (
     MouvementCompte,
     StatutMouvement,
     NatureMouvement,
+    SensMouvement,
     StatutRapprochement,
 )
 from ..selectors import MouvementSelector
@@ -25,17 +26,28 @@ class RapprochementService:
         if date_releve is None:
             date_releve = date_fin
 
-        solde_comptable = (
-            MouvementCompte.objects.filter(
-                compte=compte,
-                date__date__gte=date_debut,
-                date__date__lte=date_fin,
-                statut=StatutMouvement.VALIDE,
-            ).aggregate(
-                total=Sum("montant")
-            )["total"]
-            or Decimal("0.00")
+        mouvements_comptables = MouvementCompte.objects.filter(
+            compte=compte,
+            date__date__gte=date_debut,
+            date__date__lte=date_fin,
+            statut__in=[StatutMouvement.VALIDE, StatutMouvement.RAPPROCHE],
         )
+        signe = Case(
+            When(sens=SensMouvement.ENTREE, then=F("montant")),
+            When(sens=SensMouvement.SORTIE, then=-F("montant")),
+            When(
+                nature__in=[
+                    NatureMouvement.ENCAISSEMENT,
+                    NatureMouvement.TRANSFERT,
+                    NatureMouvement.AJUSTEMENT,
+                    NatureMouvement.OUVERTURE,
+                ],
+                then=F("montant"),
+            ),
+            default=-F("montant"),
+            output_field=DecimalField(max_digits=15, decimal_places=2),
+        )
+        solde_comptable = mouvements_comptables.aggregate(total=Sum(signe))["total"] or Decimal("0.00")
 
         rapprochement = RapprochementBancaire.objects.create(
             compte=compte,
@@ -48,12 +60,7 @@ class RapprochementService:
             statut=StatutRapprochement.EN_COURS,
         )
 
-        mouvements = MouvementCompte.objects.filter(
-            compte=compte,
-            date__date__gte=date_debut,
-            date__date__lte=date_fin,
-            statut=StatutMouvement.VALIDE,
-        )
+        mouvements = mouvements_comptables
 
         for mvt in mouvements:
             LigneRapprochement.objects.create(

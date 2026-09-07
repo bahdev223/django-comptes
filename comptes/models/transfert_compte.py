@@ -8,11 +8,11 @@ from .compte import Compte
 
 class TransfertCompte(models.Model):
     source = models.ForeignKey(
-        Compte, on_delete=models.CASCADE, related_name="transferts_sortants", verbose_name=_("Source")
+        Compte, on_delete=models.PROTECT, related_name="transferts_sortants", verbose_name=_("Source")
     )
     destination = models.ForeignKey(
         Compte,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="transferts_entrants",
         verbose_name=_("Destination"),
     )

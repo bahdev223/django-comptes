@@ -32,7 +32,7 @@ class SensMouvement(models.TextChoices):
 
 class MouvementCompte(models.Model):
     compte = models.ForeignKey(
-        Compte, on_delete=models.CASCADE, related_name="mouvements", verbose_name=_("Compte")
+        Compte, on_delete=models.PROTECT, related_name="mouvements", verbose_name=_("Compte")
     )
     nature = models.CharField(
         _("Nature"), max_length=20, choices=NatureMouvement.choices, default=NatureMouvement.ENCAISSEMENT
@@ -128,6 +128,11 @@ class MouvementCompte(models.Model):
             if self.statut != original.statut and (original.statut, self.statut) not in transitions_autorisees:
                 raise ValueError("La transition de statut demandée n'est pas autorisée.")
         return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if self.statut in (StatutMouvement.VALIDE, StatutMouvement.RAPPROCHE, StatutMouvement.ANNULE):
+            raise ValueError("Un mouvement financier ne peut pas être supprimé.")
+        return super().delete(*args, **kwargs)
 
     @property
     def est_entree(self):

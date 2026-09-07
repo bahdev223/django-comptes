@@ -16,5 +16,5 @@ router.register(r"rapprochements", RapprochementBancaireViewSet)
 router.register(r"clotures", ClotureCompteViewSet)
 
 urlpatterns = [
-    path("api/", include(router.urls)),
+    path("", include(router.urls)),
 ]

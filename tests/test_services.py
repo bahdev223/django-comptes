@@ -4,18 +4,18 @@ Tests des services metier du module comptes.
 
 from decimal import Decimal
 from datetime import date
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.contrib.auth import get_user_model
 
 from comptes.models import (
     Compte, TypeCompte, MouvementCompte,
-    NatureMouvement, StatutMouvement, TransfertCompte,
+    NatureMouvement, SensMouvement, StatutMouvement, TransfertCompte,
     JournalCompte, ClotureCompte,
 )
 from comptes.services import (
     CompteService, MouvementCompteService,
     TransfertCompteService, ClotureCompteService,
-    JournalCompteService,
+    JournalCompteService, RapprochementService,
 )
 
 User = get_user_model()
@@ -66,7 +66,7 @@ class MouvementCompteServiceTest(TestCase):
             code="MVT-001", nom="Test Mouvements",
             solde_actuel=Decimal("50000.00"),
         )
-        self.user = User.objects.create_user("caissier", password="test")
+        self.user = User.objects.create_user("caissier", password="test", is_staff=True)
 
     def test_encaisser(self):
         mvt = MouvementCompteService.encaisser(
@@ -102,6 +102,7 @@ class MouvementCompteServiceTest(TestCase):
                 user=self.user,
             )
 
+    @override_settings(COMPTES={"ALLOW_OVERDRAFT": True})
     def test_decaisser_avec_decouvert(self):
         self.compte.autoriser_decouvert = True
         self.compte.limite_decouvert = Decimal("50000.00")
@@ -173,7 +174,7 @@ class TransfertCompteServiceTest(TestCase):
             code="DST-SRV", nom="Destination",
             solde_actuel=Decimal("0.00"),
         )
-        self.user = User.objects.create_user("gerant", password="test")
+        self.user = User.objects.create_user("gerant", password="test", is_staff=True)
 
     def test_transfert_reussi(self):
         t = TransfertCompteService.transferer(
@@ -281,3 +282,31 @@ class JournalCompteServiceTest(TestCase):
         )
         self.assertEqual(entrees, Decimal("10000.00"))
         self.assertEqual(sorties, Decimal("3000.00"))
+
+
+class RapprochementServiceTest(TestCase):
+    def test_solde_comptable_utilise_le_sens_des_mouvements(self):
+        compte = Compte.objects.create(code="RAPP-001", nom="Banque")
+        MouvementCompte.objects.create(
+            compte=compte,
+            nature=NatureMouvement.ENCAISSEMENT,
+            sens=SensMouvement.ENTREE,
+            statut=StatutMouvement.VALIDE,
+            montant=Decimal("100000.00"),
+            libelle="Encaissement",
+        )
+        MouvementCompte.objects.create(
+            compte=compte,
+            nature=NatureMouvement.DECAISSEMENT,
+            sens=SensMouvement.SORTIE,
+            statut=StatutMouvement.VALIDE,
+            montant=Decimal("30000.00"),
+            libelle="Décaissement",
+        )
+
+        rapprochement = RapprochementService.initialiser(
+            compte, date.today(), date.today(), Decimal("70000.00")
+        )
+
+        self.assertEqual(rapprochement.solde_comptable, Decimal("70000.00"))
+        self.assertEqual(rapprochement.ecart, Decimal("0.00"))

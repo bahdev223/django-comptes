@@ -6,6 +6,8 @@ from django.db import transaction
 from ..models import Compte, TransfertCompte
 from ..models import SensMouvement
 from ..signals.mouvement import transfert_effectue
+from ..defaults import get_comptes_setting
+from ..permissions import require_comptes_permission
 from .mouvement_service import MouvementCompteService
 
 
@@ -15,6 +17,7 @@ class TransfertCompteService:
     @staticmethod
     @transaction.atomic
     def transferer(source, destination, montant, user, notes="", idempotency_key=None):
+        require_comptes_permission(user, "transferer")
         if idempotency_key:
             existing = TransfertCompte.objects.filter(idempotency_key=idempotency_key).first()
             if existing:
@@ -38,10 +41,15 @@ class TransfertCompteService:
         source = comptes[source.id]
         destination = comptes[destination.id]
 
-        if source.solde_disponible < montant:
+        disponible = (
+            source.solde_actuel + source.limite_decouvert
+            if get_comptes_setting("ALLOW_OVERDRAFT", False) and source.autoriser_decouvert
+            else source.solde_actuel
+        )
+        if disponible < montant:
             raise ValueError(
                 f"Solde insuffisant dans {source.nom}. "
-                f"Disponible: {source.solde_disponible:,.0f}, Requis: {montant:,.0f}"
+                f"Disponible: {disponible:,.0f}, Requis: {montant:,.0f}"
             )
 
         ref = f"TRF-{uuid4().hex[:16].upper()}"
@@ -74,13 +82,14 @@ class TransfertCompteService:
             idempotency_key=idempotency_key,
         )
 
-        transfert_effectue.send(
+        if get_comptes_setting("EMIT_DOMAIN_EVENTS", True):
+            transaction.on_commit(lambda: transfert_effectue.send(
             sender=TransfertCompteService,
             instance=transfert,
             source=source,
             destination=destination,
             montant=montant,
             user=user,
-        )
+            ))
 
         return transfert

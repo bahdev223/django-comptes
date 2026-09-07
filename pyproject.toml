@@ -33,6 +33,12 @@ dependencies = [
     "django-appconf>=1.0",
 ]
 
+[project.optional-dependencies]
+api = [
+    "djangorestframework>=3.14",
+    "django-filter>=23.0",
+]
+
 [project.urls]
 Homepage = "https://github.com/bah-dev/django-comptes"
 Repository = "https://github.com/bah-dev/django-comptes.git"

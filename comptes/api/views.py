@@ -11,6 +11,7 @@ from ..services import (
     ClotureCompteService, CompteService,
 )
 from ..selectors import DashboardSelector, MouvementSelector
+from ..permissions import ComptesPermission
 from .serializers import (
     CompteSerializer, DeviseSerializer, ModePaiementSerializer, MouvementCompteSerializer,
     TransfertCompteSerializer, JournalCompteSerializer,
@@ -21,7 +22,8 @@ from .serializers import (
 class CompteViewSet(viewsets.ModelViewSet):
     queryset = Compte.objects.all()
     serializer_class = CompteSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [ComptesPermission]
+    permission_actions = {"recalculer_solde": "change_compte"}
     filterset_fields = ["type", "role", "actif", "devise"]
     search_fields = ["code", "nom"]
 
@@ -57,7 +59,7 @@ class ModePaiementViewSet(viewsets.ModelViewSet):
 
     queryset = ModePaiement.objects.prefetch_related("comptes")
     serializer_class = ModePaiementSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [ComptesPermission]
     filterset_fields = ["actif", "comptes"]
     search_fields = ["code", "libelle"]
 
@@ -65,20 +67,23 @@ class ModePaiementViewSet(viewsets.ModelViewSet):
 class DeviseViewSet(viewsets.ModelViewSet):
     queryset = Devise.objects.all()
     serializer_class = DeviseSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [ComptesPermission]
     filterset_fields = ["actif", "est_personnalisee"]
     search_fields = ["code", "nom", "symbole"]
 
 
-class MouvementCompteViewSet(viewsets.ModelViewSet):
+class MouvementCompteViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = MouvementCompte.objects.select_related("compte", "created_by")
     serializer_class = MouvementCompteSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [ComptesPermission]
+    permission_actions = {
+        "encaisser": "encaisser",
+        "decaisser": "decaisser",
+        "ajuster": "change_compte",
+        "annuler": "annuler",
+    }
     filterset_fields = ["compte", "nature", "statut"]
     search_fields = ["libelle", "reference"]
-
-    def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
 
     @action(detail=False, methods=["post"])
     def encaisser(self, request):
@@ -106,6 +111,20 @@ class MouvementCompteViewSet(viewsets.ModelViewSet):
         )
         return Response(MouvementCompteSerializer(mvt).data, status=status.HTTP_201_CREATED)
 
+    @action(detail=False, methods=["post"])
+    def ajuster(self, request):
+        compte = Compte.objects.get(id=request.data["compte_id"])
+        mvt = MouvementCompteService.ajuster(
+            compte=compte,
+            montant=request.data["montant"],
+            libelle=request.data.get("libelle", ""),
+            user=request.user,
+            reference=request.data.get("reference", ""),
+            idempotency_key=request.data.get("idempotency_key"),
+            sens=request.data.get("sens"),
+        )
+        return Response(MouvementCompteSerializer(mvt).data, status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=["post"])
     def annuler(self, request, pk=None):
         mvt = self.get_object()
@@ -115,10 +134,11 @@ class MouvementCompteViewSet(viewsets.ModelViewSet):
         return Response(MouvementCompteSerializer(annulation).data)
 
 
-class TransfertCompteViewSet(viewsets.ModelViewSet):
+class TransfertCompteViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = TransfertCompte.objects.select_related("source", "destination")
     serializer_class = TransfertCompteSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [ComptesPermission]
+    permission_actions = {"transferer": "transferer"}
 
     @action(detail=False, methods=["post"])
     def transferer(self, request):
@@ -138,16 +158,20 @@ class TransfertCompteViewSet(viewsets.ModelViewSet):
 class JournalCompteViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = JournalCompte.objects.select_related("compte")
     serializer_class = JournalCompteSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [ComptesPermission]
 
 
 class RapprochementBancaireViewSet(viewsets.ModelViewSet):
     queryset = RapprochementBancaire.objects.select_related("compte")
     serializer_class = RapprochementBancaireSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [ComptesPermission]
+    permission_actions = {
+        "create": "rapprocher", "update": "rapprocher",
+        "partial_update": "rapprocher", "destroy": "rapprocher",
+    }
 
 
 class ClotureCompteViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = ClotureCompte.objects.select_related("compte", "cloture_par")
     serializer_class = ClotureCompteSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [ComptesPermission]

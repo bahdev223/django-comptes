@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -12,7 +13,7 @@ class CompteFavori(models.Model):
         verbose_name=_("Compte"),
     )
     utilisateur = models.ForeignKey(
-        "auth.User",  # lazy reference — resolved at migration time
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="comptes_favoris",
         verbose_name=_("Utilisateur"),
