@@ -1,23 +1,39 @@
 from rest_framework import serializers
 
 from ..models import (
-    Compte, Devise, ModePaiement, MouvementCompte, TransfertCompte,
+    Compte, Devise, FinancialProvider, ModePaiement, MouvementCompte, TransfertCompte,
     JournalCompte, RapprochementBancaire, ClotureCompte,
 )
 
 
 class CompteSerializer(serializers.ModelSerializer):
+    provider_code = serializers.CharField(source="provider.code", read_only=True)
+    provider_name = serializers.CharField(source="provider.name", read_only=True)
+
     class Meta:
         model = Compte
         fields = [
-            "id", "code", "nom", "type", "role",
+            "id", "code", "nom", "provider", "provider_code", "provider_name",
+            "identifiant", "type", "role",
             "devise", "taux_change", "devise_reference",
             "solde_initial", "solde_actuel", "solde_disponible",
+            "accepte_ventes", "par_defaut",
             "actif", "autoriser_decouvert", "limite_decouvert",
             "date_ouverture", "date_fermeture",
-            "compte_comptable_code",
+            "compte_comptable_code", "entreprise_id",
         ]
-        read_only_fields = ["solde_initial", "solde_actuel", "date_ouverture"]
+        read_only_fields = ["solde_initial", "solde_actuel", "date_ouverture", "entreprise_id"]
+
+
+class FinancialProviderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FinancialProvider
+        fields = [
+            "id", "code", "name", "official_name", "kind", "country_code", "logo",
+            "active", "selectable", "sort_order", "aliases", "metadata",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = ["created_at", "updated_at"]
 
 
 class DeviseSerializer(serializers.ModelSerializer):
@@ -38,8 +54,28 @@ class ModePaiementSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ModePaiement
-        fields = ["id", "code", "libelle", "actif", "comptes", "created_at", "updated_at"]
-        read_only_fields = ["created_at", "updated_at"]
+        fields = ["id", "entreprise_id", "code", "libelle", "actif", "comptes", "created_at", "updated_at"]
+        read_only_fields = ["entreprise_id", "created_at", "updated_at"]
+
+
+class MouvementInputSerializer(serializers.Serializer):
+    compte_id = serializers.IntegerField()
+    montant = serializers.DecimalField(max_digits=15, decimal_places=2)
+    libelle = serializers.CharField(required=False, allow_blank=True, default="")
+    reference = serializers.CharField(required=False, allow_blank=True, default="")
+    idempotency_key = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+
+class AjustementInputSerializer(MouvementInputSerializer):
+    sens = serializers.ChoiceField(choices=["ENTREE", "SORTIE"], required=False)
+
+
+class TransfertInputSerializer(serializers.Serializer):
+    source_id = serializers.IntegerField()
+    destination_id = serializers.IntegerField()
+    montant = serializers.DecimalField(max_digits=15, decimal_places=2)
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+    idempotency_key = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
 
 class MouvementCompteSerializer(serializers.ModelSerializer):

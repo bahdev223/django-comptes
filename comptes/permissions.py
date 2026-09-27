@@ -34,11 +34,9 @@ def get_all_comptes_permissions():
 
 def has_comptes_permission(user, permission_codename):
     """Verifie si un utilisateur a une permission specifique du module."""
-    if user.is_superuser or user.is_staff:
+    if user.is_superuser:
         return True
-    return user.user_permissions.filter(codename=permission_codename).exists() or (
-        user.groups.filter(permissions__codename=permission_codename).exists()
-    )
+    return user.has_perm(f"comptes.{permission_codename}")
 
 
 def require_comptes_permission(user, permission_codename):

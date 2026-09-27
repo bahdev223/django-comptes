@@ -12,7 +12,7 @@ from datetime import date, timedelta
 from django.db.models import Sum, Q, Count
 from django.utils import timezone
 
-from .models import Compte, MouvementCompte, TransfertCompte, JournalCompte
+from .models import Compte, ModePaiement, MouvementCompte, TransfertCompte, JournalCompte
 from .models import NatureMouvement, StatutMouvement, TypeCompte
 
 
@@ -30,8 +30,19 @@ class DashboardSelector:
         comptes = self._filter_queryset(Compte.objects.all())
 
         total = comptes.filter(actif=True).aggregate(
-            total=Sum("solde_actuel"),
             nb=Count("id"),
+        )
+        soldes_par_devise = {
+            row["devise_id"]: row["solde"] or Decimal("0.00")
+            for row in comptes.filter(actif=True)
+            .values("devise_id")
+            .annotate(solde=Sum("solde_actuel"))
+            .order_by("devise_id")
+        }
+        solde_total = (
+            next(iter(soldes_par_devise.values()))
+            if len(soldes_par_devise) == 1
+            else None
         )
 
         par_type = {}
@@ -47,7 +58,8 @@ class DashboardSelector:
         ).count()
 
         return {
-            "solde_total": total["total"] or Decimal("0.00"),
+            "solde_total": solde_total,
+            "soldes_par_devise": soldes_par_devise,
             "nb_comptes_actifs": total["nb"] or 0,
             "par_type": par_type,
             "alertes_decouvert": alertes_decouvert,
@@ -60,13 +72,9 @@ class DashboardSelector:
             MouvementCompte.objects.filter(date__gte=depuis, statut=StatutMouvement.VALIDE)
         )
 
-        entrees = mouvements.filter(
-            nature__in=[NatureMouvement.ENCAISSEMENT, NatureMouvement.TRANSFERT]
-        ).aggregate(total=Sum("montant"))["total"] or Decimal("0.00")
+        entrees = mouvements.filter(sens="ENTREE").aggregate(total=Sum("montant"))["total"] or Decimal("0.00")
 
-        sorties = mouvements.filter(
-            nature__in=[NatureMouvement.DECAISSEMENT]
-        ).aggregate(total=Sum("montant"))["total"] or Decimal("0.00")
+        sorties = mouvements.filter(sens="SORTIE").aggregate(total=Sum("montant"))["total"] or Decimal("0.00")
 
         return {
             "entrees": entrees,
@@ -145,3 +153,57 @@ class MouvementSelector:
                 statut__in=[StatutMouvement.VALIDE, StatutMouvement.BROUILLON],
             )
         ).order_by("date")
+
+
+class ConfigurationFinanciereSelector:
+    def __init__(self, entreprise_id=""):
+        self.entreprise_id = entreprise_id
+
+    def _accounts_queryset(self):
+        return (
+            Compte.objects.filter(entreprise_id=self.entreprise_id, actif=True)
+            .select_related("provider")
+            .order_by("code")
+        )
+
+    def configuration(self):
+        accounts = list(self._accounts_queryset())
+        active_payment_methods = self._active_payment_methods()
+        has_cash = any(account.type == TypeCompte.ESPECES for account in accounts)
+        has_mobile_money = any(account.type == TypeCompte.MOBILE_MONEY for account in accounts)
+        has_bank = any(account.type == TypeCompte.BANQUE for account in accounts)
+
+        return {
+            "accounts": [self._account_payload(account) for account in accounts],
+            "payment_methods": [mode.code for mode in active_payment_methods],
+            "capabilities": {
+                "has_cash": has_cash,
+                "has_mobile_money": has_mobile_money,
+                "has_bank": has_bank,
+                "can_transfer": len(accounts) >= 2,
+                "can_reconcile_bank": has_bank,
+            },
+        }
+
+    def _active_payment_methods(self):
+        return (
+            ModePaiement.objects.filter(
+                entreprise_id=self.entreprise_id,
+                actif=True,
+                liens_comptes__actif=True,
+                liens_comptes__compte__actif=True,
+                liens_comptes__compte__entreprise_id=self.entreprise_id,
+            )
+            .distinct()
+            .order_by("libelle", "code")
+        )
+
+    def _account_payload(self, account):
+        provider = account.provider
+        return {
+            "id": account.id,
+            "name": account.nom,
+            "type": account.type,
+            "provider": provider.code if provider else None,
+            "logo": provider.logo if provider else "",
+        }

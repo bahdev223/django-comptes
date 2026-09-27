@@ -10,10 +10,11 @@ from decimal import Decimal
 from datetime import date, timedelta
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 
 from comptes.models import (
-    Compte, Devise, ModePaiement, TypeCompte, RoleCompte,
+    Compte, Devise, FinancialProvider, ProviderKind, ModePaiement, ModePaiementCompte, TypeCompte, RoleCompte,
     MouvementCompte, NatureMouvement, StatutMouvement,
     TransfertCompte, JournalCompte, LigneJournalCompte,
     ClotureCompte, PeriodeCloture,
@@ -82,14 +83,57 @@ class CompteModelTest(TestCase):
     def test_string_representation(self):
         self.assertEqual(str(self.compte), "C-001 - Caisse Principale")
 
+    def test_compte_peut_etre_lie_a_un_provider_global(self):
+        provider = FinancialProvider.objects.create(
+            code="ORANGE_MONEY",
+            name="Orange Money",
+            kind=ProviderKind.MOBILE_MONEY,
+            country_code="ML",
+        )
+        compte = Compte.objects.create(
+            code="OM-001",
+            nom="Orange Money boutique",
+            type=TypeCompte.MOBILE_MONEY,
+            provider=provider,
+            identifiant="76 XX XX XX",
+            accepte_ventes=True,
+            par_defaut=True,
+        )
+
+        self.assertEqual(compte.provider, provider)
+        self.assertEqual(compte.identifiant, "76 XX XX XX")
+        self.assertTrue(compte.accepte_ventes)
+        self.assertTrue(compte.par_defaut)
+        self.assertTrue(compte.est_mobile_money)
+
+
+class FinancialProviderModelTest(TestCase):
+    def test_provider_normalise_son_code_et_son_pays(self):
+        provider = FinancialProvider.objects.create(
+            code=" orange_money ",
+            name=" Orange Money ",
+            official_name=" Orange Finances Mobiles Mali ",
+            kind=ProviderKind.MOBILE_MONEY,
+            country_code=" ml ",
+            aliases=["Orange", "OM"],
+        )
+
+        self.assertEqual(provider.code, "ORANGE_MONEY")
+        self.assertEqual(provider.country_code, "ML")
+        self.assertEqual(provider.name, "Orange Money")
+        self.assertEqual(provider.official_name, "Orange Finances Mobiles Mali")
+        self.assertEqual(str(provider), "Orange Money")
+
 
 class ModePaiementModelTest(TestCase):
     def test_mode_configurable_lie_a_plusieurs_comptes(self):
-        caisse = Compte.objects.create(code="C-ESPECES", nom="Caisse")
+        caisse = Compte.objects.create(code="C-ESPECES", nom="Caisse", entreprise_id="A")
         caisse_secondaire = Compte.objects.create(
-            code="C-ESPECES-2", nom="Caisse secondaire"
+            code="C-ESPECES-2", nom="Caisse secondaire", entreprise_id="A"
         )
-        especes = ModePaiement.objects.create(code=" especes ", libelle=" Espèces ")
+        especes = ModePaiement.objects.create(
+            entreprise_id="A", code=" especes ", libelle=" Espèces "
+        )
         especes.comptes.add(caisse, caisse_secondaire)
 
         self.assertEqual(especes.code, "ESPECES")
@@ -102,6 +146,22 @@ class ModePaiementModelTest(TestCase):
         self.assertQuerySetEqual(
             caisse.modes_paiement.all(), [especes], ordered=True
         )
+
+    def test_mode_paiement_est_unique_par_entreprise(self):
+        ModePaiement.objects.create(entreprise_id="A", code="ESPECES", libelle="Espèces")
+        ModePaiement.objects.create(entreprise_id="B", code="ESPECES", libelle="Espèces")
+
+        with self.assertRaises(IntegrityError):
+            ModePaiement.objects.create(entreprise_id="A", code="ESPECES", libelle="Cash")
+
+    def test_mode_paiement_refuse_un_compte_autre_entreprise(self):
+        mode = ModePaiement.objects.create(entreprise_id="A", code="ESPECES", libelle="Espèces")
+        compte_b = Compte.objects.create(entreprise_id="B", code="C-ESPECES", nom="Caisse")
+
+        lien = ModePaiementCompte(mode_paiement=mode, compte=compte_b)
+
+        with self.assertRaises(ValidationError):
+            lien.full_clean()
 
 
 class MouvementCompteModelTest(TestCase):

@@ -1,25 +1,29 @@
+from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..models import (
-    Compte, Devise, ModePaiement, MouvementCompte, TransfertCompte,
+    Compte, Devise, FinancialProvider, ModePaiement, MouvementCompte, TransfertCompte,
     JournalCompte, RapprochementBancaire, ClotureCompte,
 )
 from ..services import (
     MouvementCompteService, TransfertCompteService,
     ClotureCompteService, CompteService,
 )
-from ..selectors import DashboardSelector, MouvementSelector
+from ..selectors import ConfigurationFinanciereSelector, DashboardSelector, MouvementSelector
 from ..permissions import ComptesPermission
+from ..scoping import EntrepriseScopedViewSetMixin, scoping_enabled
 from .serializers import (
-    CompteSerializer, DeviseSerializer, ModePaiementSerializer, MouvementCompteSerializer,
+    AjustementInputSerializer, CompteSerializer, DeviseSerializer, FinancialProviderSerializer,
+    ModePaiementSerializer, MouvementCompteSerializer, MouvementInputSerializer,
+    TransfertInputSerializer,
     TransfertCompteSerializer, JournalCompteSerializer,
     RapprochementBancaireSerializer, ClotureCompteSerializer,
 )
 
 
-class CompteViewSet(viewsets.ModelViewSet):
+class CompteViewSet(EntrepriseScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = Compte.objects.all()
     serializer_class = CompteSerializer
     permission_classes = [ComptesPermission]
@@ -50,11 +54,36 @@ class CompteViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"])
     def synthese(self, request):
-        selector = DashboardSelector()
+        tenant_filter = {"entreprise_id": self.get_entreprise_id()} if scoping_enabled() else {}
+        selector = DashboardSelector(tenant_filter=tenant_filter)
         return Response(selector.synthese_globale())
 
+    @action(detail=False, methods=["get"])
+    def configuration(self, request):
+        entreprise_id = self.get_entreprise_id() if scoping_enabled() else ""
+        selector = ConfigurationFinanciereSelector(entreprise_id=entreprise_id)
+        return Response(selector.configuration())
 
-class ModePaiementViewSet(viewsets.ModelViewSet):
+
+class FinancialProviderViewSet(viewsets.ModelViewSet):
+    queryset = FinancialProvider.objects.all()
+    serializer_class = FinancialProviderSerializer
+    permission_classes = [ComptesPermission]
+    filterset_fields = ["country_code", "kind", "active", "selectable"]
+    search_fields = ["code", "name", "official_name"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        country = self.request.query_params.get("country") or self.request.query_params.get("country_code")
+        kind = self.request.query_params.get("kind")
+        if country:
+            qs = qs.filter(country_code=country.upper())
+        if kind:
+            qs = qs.filter(kind=kind.upper())
+        return qs
+
+
+class ModePaiementViewSet(EntrepriseScopedViewSetMixin, viewsets.ModelViewSet):
     """Référentiel des seuls modes de paiement acceptés par l'organisation."""
 
     queryset = ModePaiement.objects.prefetch_related("comptes")
@@ -72,8 +101,9 @@ class DeviseViewSet(viewsets.ModelViewSet):
     search_fields = ["code", "nom", "symbole"]
 
 
-class MouvementCompteViewSet(viewsets.ReadOnlyModelViewSet):
+class MouvementCompteViewSet(EntrepriseScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
     queryset = MouvementCompte.objects.select_related("compte", "created_by")
+    entreprise_scope_field = "entreprise_id"
     serializer_class = MouvementCompteSerializer
     permission_classes = [ComptesPermission]
     permission_actions = {
@@ -87,41 +117,47 @@ class MouvementCompteViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=["post"])
     def encaisser(self, request):
-        compte = Compte.objects.get(id=request.data["compte_id"])
+        serializer = MouvementInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        compte = self._get_scoped_compte(serializer.validated_data["compte_id"])
         mvt = MouvementCompteService.encaisser(
             compte=compte,
-            montant=request.data["montant"],
-            libelle=request.data.get("libelle", ""),
+            montant=serializer.validated_data["montant"],
+            libelle=serializer.validated_data.get("libelle", ""),
             user=request.user,
-            reference=request.data.get("reference", ""),
-            idempotency_key=request.data.get("idempotency_key"),
+            reference=serializer.validated_data.get("reference", ""),
+            idempotency_key=serializer.validated_data.get("idempotency_key"),
         )
         return Response(MouvementCompteSerializer(mvt).data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["post"])
     def decaisser(self, request):
-        compte = Compte.objects.get(id=request.data["compte_id"])
+        serializer = MouvementInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        compte = self._get_scoped_compte(serializer.validated_data["compte_id"])
         mvt = MouvementCompteService.decaisser(
             compte=compte,
-            montant=request.data["montant"],
-            libelle=request.data.get("libelle", ""),
+            montant=serializer.validated_data["montant"],
+            libelle=serializer.validated_data.get("libelle", ""),
             user=request.user,
-            reference=request.data.get("reference", ""),
-            idempotency_key=request.data.get("idempotency_key"),
+            reference=serializer.validated_data.get("reference", ""),
+            idempotency_key=serializer.validated_data.get("idempotency_key"),
         )
         return Response(MouvementCompteSerializer(mvt).data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["post"])
     def ajuster(self, request):
-        compte = Compte.objects.get(id=request.data["compte_id"])
+        serializer = AjustementInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        compte = self._get_scoped_compte(serializer.validated_data["compte_id"])
         mvt = MouvementCompteService.ajuster(
             compte=compte,
-            montant=request.data["montant"],
-            libelle=request.data.get("libelle", ""),
+            montant=serializer.validated_data["montant"],
+            libelle=serializer.validated_data.get("libelle", ""),
             user=request.user,
-            reference=request.data.get("reference", ""),
-            idempotency_key=request.data.get("idempotency_key"),
-            sens=request.data.get("sens"),
+            reference=serializer.validated_data.get("reference", ""),
+            idempotency_key=serializer.validated_data.get("idempotency_key"),
+            sens=serializer.validated_data.get("sens"),
         )
         return Response(MouvementCompteSerializer(mvt).data, status=status.HTTP_201_CREATED)
 
@@ -133,24 +169,36 @@ class MouvementCompteViewSet(viewsets.ReadOnlyModelViewSet):
         )
         return Response(MouvementCompteSerializer(annulation).data)
 
+    def _get_scoped_compte(self, compte_id):
+        qs = Compte.objects.all()
+        if scoping_enabled():
+            qs = qs.filter(entreprise_id=self.get_entreprise_id())
+        return get_object_or_404(qs, id=compte_id)
 
-class TransfertCompteViewSet(viewsets.ReadOnlyModelViewSet):
+
+class TransfertCompteViewSet(EntrepriseScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
     queryset = TransfertCompte.objects.select_related("source", "destination")
+    entreprise_scope_field = "entreprise_id"
     serializer_class = TransfertCompteSerializer
     permission_classes = [ComptesPermission]
     permission_actions = {"transferer": "transferer"}
 
     @action(detail=False, methods=["post"])
     def transferer(self, request):
-        source = Compte.objects.get(id=request.data["source_id"])
-        destination = Compte.objects.get(id=request.data["destination_id"])
+        serializer = TransfertInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        comptes = Compte.objects.all()
+        if scoping_enabled():
+            comptes = comptes.filter(entreprise_id=self.get_entreprise_id())
+        source = get_object_or_404(comptes, id=serializer.validated_data["source_id"])
+        destination = get_object_or_404(comptes, id=serializer.validated_data["destination_id"])
         transfert = TransfertCompteService.transferer(
             source=source,
             destination=destination,
-            montant=request.data["montant"],
+            montant=serializer.validated_data["montant"],
             user=request.user,
-            notes=request.data.get("notes", ""),
-            idempotency_key=request.data.get("idempotency_key"),
+            notes=serializer.validated_data.get("notes", ""),
+            idempotency_key=serializer.validated_data.get("idempotency_key"),
         )
         return Response(TransfertCompteSerializer(transfert).data, status=status.HTTP_201_CREATED)
 

@@ -48,4 +48,10 @@ Documentation = "https://github.com/bah-dev/django-comptes#readme"
 include = ["comptes*"]
 
 [tool.setuptools.package-data]
-comptes = ["fixtures/*.csv"]
+comptes = [
+    "fixtures/*",
+    "assets/providers/ml/*.svg",
+    "assets/providers/ml/banks/*.svg",
+    "assets/providers/ml/mobile-money/*.svg",
+    "templates/comptes/*.html",
+]

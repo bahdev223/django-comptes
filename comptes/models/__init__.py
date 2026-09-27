@@ -1,6 +1,7 @@
 from .compte import Compte, TypeCompte, RoleCompte
 from .devise import Devise
-from .mode_paiement import ModePaiement
+from .financial_provider import FinancialProvider, ProviderKind
+from .mode_paiement import ModePaiement, ModePaiementCompte
 from .mouvement_compte import MouvementCompte, NatureMouvement, SensMouvement, StatutMouvement
 from .transfert_compte import TransfertCompte
 from .journal_compte import JournalCompte, LigneJournalCompte
@@ -15,7 +16,10 @@ __all__ = [
     "TypeCompte",
     "RoleCompte",
     "Devise",
+    "FinancialProvider",
+    "ProviderKind",
     "ModePaiement",
+    "ModePaiementCompte",
     "MouvementCompte",
     "NatureMouvement",
     "SensMouvement",

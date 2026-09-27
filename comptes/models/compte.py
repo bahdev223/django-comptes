@@ -28,6 +28,21 @@ class RoleCompte(models.TextChoices):
 class Compte(models.Model):
     code = models.CharField(_("Code"), max_length=20)
     nom = models.CharField(_("Nom"), max_length=200)
+    provider = models.ForeignKey(
+        "FinancialProvider",
+        on_delete=models.PROTECT,
+        related_name="comptes",
+        verbose_name=_("Fournisseur financier"),
+        blank=True,
+        null=True,
+    )
+    identifiant = models.CharField(
+        _("Identifiant du compte"),
+        max_length=120,
+        blank=True,
+        default="",
+        help_text=_("Numéro de téléphone, numéro de compte bancaire ou libellé libre."),
+    )
     type = models.CharField(
         _("Type"), max_length=30, choices=TypeCompte.choices, default=TypeCompte.ESPECES
     )
@@ -56,6 +71,12 @@ class Compte(models.Model):
     solde_initial = models.DecimalField(
         _("Solde initial"), max_digits=15, decimal_places=2, default=Decimal("0.00")
     )
+    accepte_ventes = models.BooleanField(
+        _("Accepte les ventes"),
+        default=True,
+        help_text=_("Compte proposé lors d'un encaissement de vente."),
+    )
+    par_defaut = models.BooleanField(_("Compte par défaut"), default=False)
     dernier_recalcul = models.DateTimeField(
         _("Dernier recalcul du solde"), blank=True, null=True
     )

@@ -1,11 +1,12 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .api.views import (
-    CompteViewSet, DeviseViewSet, ModePaiementViewSet, MouvementCompteViewSet, TransfertCompteViewSet,
+    CompteViewSet, DeviseViewSet, FinancialProviderViewSet, ModePaiementViewSet, MouvementCompteViewSet, TransfertCompteViewSet,
     JournalCompteViewSet, RapprochementBancaireViewSet, ClotureCompteViewSet,
 )
 
 router = DefaultRouter()
+router.register(r"providers", FinancialProviderViewSet)
 router.register(r"comptes", CompteViewSet)
 router.register(r"devises", DeviseViewSet)
 router.register(r"modes-paiement", ModePaiementViewSet)

@@ -46,14 +46,15 @@ class MouvementCompte(models.Model):
     montant = models.DecimalField(_("Montant"), max_digits=15, decimal_places=2)
     libelle = models.CharField(_("Libellé"), max_length=255)
     reference = models.CharField(_("Référence"), max_length=100, blank=True, null=True)
+    entreprise_id = models.CharField(max_length=255, blank=True, default="", db_index=True)
     idempotency_key = models.CharField(
         _("Clé d'idempotence"),
         max_length=128,
-        unique=True,
         blank=True,
         null=True,
         help_text=_("Clé fournie par le système appelant pour éviter une double opération."),
     )
+    payload_hash = models.CharField(max_length=128, blank=True, default="")
     date = models.DateTimeField(_("Date"), auto_now_add=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, verbose_name=_("Créé par")
@@ -81,6 +82,10 @@ class MouvementCompte(models.Model):
     content_type = models.ForeignKey(ContentType, on_delete=models.SET_NULL, null=True, blank=True)
     object_id = models.PositiveIntegerField(null=True, blank=True)
     source = GenericForeignKey("content_type", "object_id")
+    source_system = models.CharField(max_length=80, blank=True, default="")
+    source_type = models.CharField(max_length=80, blank=True, default="")
+    source_id = models.CharField(max_length=120, blank=True, default="")
+    source_reference = models.CharField(max_length=120, blank=True, default="")
 
     class Meta:
         verbose_name = _("Mouvement")
@@ -88,6 +93,7 @@ class MouvementCompte(models.Model):
         ordering = ["-date"]
         indexes = [
             models.Index(fields=["compte", "date"]),
+            models.Index(fields=["entreprise_id", "date"]),
             models.Index(fields=["reference"]),
             models.Index(fields=["statut"]),
         ]
@@ -96,6 +102,11 @@ class MouvementCompte(models.Model):
                 condition=Q(montant__gt=0),
                 name="mouvement_montant_positif",
             ),
+            models.UniqueConstraint(
+                fields=["entreprise_id", "idempotency_key"],
+                condition=Q(idempotency_key__isnull=False) & ~Q(idempotency_key=""),
+                name="mouvement_idempotence_par_entreprise",
+            ),
         ]
 
     def __str__(self):
@@ -103,14 +114,18 @@ class MouvementCompte(models.Model):
 
     def save(self, *args, **kwargs):
         """Empêche l'altération d'une écriture financière déjà validée."""
+        if self.compte_id and not self.entreprise_id:
+            self.entreprise_id = self.compte.entreprise_id
         if self.pk:
             original = type(self).objects.only(
                 "compte_id", "nature", "statut", "sens", "montant", "libelle", "reference",
-                "idempotency_key", "content_type_id", "object_id", "created_by_id",
+                "idempotency_key", "payload_hash", "content_type_id", "object_id", "created_by_id",
+                "source_system", "source_type", "source_id", "source_reference",
             ).get(pk=self.pk)
             protected_fields = (
                 "compte_id", "nature", "sens", "montant", "libelle", "reference",
-                "idempotency_key", "content_type_id", "object_id", "created_by_id",
+                "idempotency_key", "payload_hash", "content_type_id", "object_id", "created_by_id",
+                "source_system", "source_type", "source_id", "source_reference",
             )
             protected_changed = any(
                 getattr(self, field) != getattr(original, field) for field in protected_fields

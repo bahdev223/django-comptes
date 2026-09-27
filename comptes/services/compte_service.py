@@ -10,6 +10,25 @@ from ..models import NatureMouvement, SensMouvement, StatutMouvement, TypeChange
 class CompteService:
     """Gestion des comptes financiers."""
 
+    CHAMPS_MODIFIABLES = {
+        "nom",
+        "provider",
+        "identifiant",
+        "type",
+        "role",
+        "devise",
+        "devise_id",
+        "taux_change",
+        "devise_reference",
+        "actif",
+        "autoriser_decouvert",
+        "limite_decouvert",
+        "date_fermeture",
+        "compte_comptable_code",
+        "accepte_ventes",
+        "par_defaut",
+    }
+
     @staticmethod
     def creer(code, nom, type_compte, **kwargs):
         solde_initial = kwargs.pop("solde_initial", Decimal("0.00"))
@@ -36,7 +55,7 @@ class CompteService:
     @staticmethod
     def modifier(compte, **kwargs):
         for attr, value in kwargs.items():
-            if hasattr(compte, attr):
+            if attr in CompteService.CHAMPS_MODIFIABLES and hasattr(compte, attr):
                 setattr(compte, attr, value)
         compte.save()
         return compte

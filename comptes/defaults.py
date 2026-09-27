@@ -14,6 +14,7 @@ class ComptesAppConf(AppConf):
             'ALLOW_BACKDATED_OPERATIONS': False,
             'LOCK_CLOSED_PERIODS': True,
             'EMIT_DOMAIN_EVENTS': True,
+            'SCOPE_RESOLVER': None,
         }
     """
 
@@ -24,6 +25,7 @@ class ComptesAppConf(AppConf):
     ALLOW_BACKDATED_OPERATIONS = False
     LOCK_CLOSED_PERIODS = True
     EMIT_DOMAIN_EVENTS = True
+    SCOPE_RESOLVER = None
 
     class Meta:
         prefix = "COMPTES"

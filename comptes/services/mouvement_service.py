@@ -95,7 +95,10 @@ class MouvementCompteService:
             raise ValueError("Le montant doit etre positif")
 
         if idempotency_key:
-            existing = MouvementCompte.objects.filter(idempotency_key=idempotency_key).first()
+            existing = MouvementCompte.objects.filter(
+                entreprise_id=compte.entreprise_id,
+                idempotency_key=idempotency_key,
+            ).first()
             if existing:
                 return existing
 
@@ -150,13 +153,17 @@ class MouvementCompteService:
                     montant=montant,
                     libelle=libelle,
                     reference=reference,
+                    entreprise_id=compte.entreprise_id,
                     idempotency_key=idempotency_key,
                     created_by=user,
                     **lien,
                 )
         except IntegrityError:
             if idempotency_key:
-                return MouvementCompte.objects.get(idempotency_key=idempotency_key)
+                return MouvementCompte.objects.get(
+                    entreprise_id=compte.entreprise_id,
+                    idempotency_key=idempotency_key,
+                )
             raise
 
         MouvementCompteService._mettre_a_jour_solde(compte, mouvement.sens, montant)
@@ -195,6 +202,7 @@ class MouvementCompteService:
             montant=mouvement.montant,
             libelle=f"ANNULATION - {mouvement.libelle} - {raison}".strip(),
             reference=mouvement.reference,
+            entreprise_id=mouvement.entreprise_id,
             created_by=user,
             mouvement_parent=mouvement,
         )

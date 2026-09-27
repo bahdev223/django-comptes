@@ -19,12 +19,17 @@ class TransfertCompteService:
     def transferer(source, destination, montant, user, notes="", idempotency_key=None):
         require_comptes_permission(user, "transferer")
         if idempotency_key:
-            existing = TransfertCompte.objects.filter(idempotency_key=idempotency_key).first()
+            existing = TransfertCompte.objects.filter(
+                entreprise_id=source.entreprise_id,
+                idempotency_key=idempotency_key,
+            ).first()
             if existing:
                 return existing
 
         if source.id == destination.id:
             raise ValueError("Impossible de transferer vers le meme compte")
+        if source.entreprise_id != destination.entreprise_id:
+            raise ValueError("Un transfert doit rester dans la même entreprise")
         if not source.actif:
             raise ValueError(f"Le compte source {source.nom} est inactif")
         if not destination.actif:
@@ -77,6 +82,7 @@ class TransfertCompteService:
             destination=destination,
             montant=montant,
             reference=ref,
+            entreprise_id=source.entreprise_id,
             valide_par=user,
             notes=notes,
             idempotency_key=idempotency_key,

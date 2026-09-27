@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 
 from .models import (
-    Compte, MouvementCompte, TransfertCompte,
+    Compte, FinancialProvider, MouvementCompte, TransfertCompte,
     JournalCompte, LigneJournalCompte,
     RapprochementBancaire, LigneRapprochement,
     ClotureCompte, HistoriqueCompte, CompteFavori, Devise, ModePaiement,
@@ -32,22 +32,34 @@ class LigneRapprochementInline(admin.TabularInline):
 @admin.register(Compte)
 class CompteAdmin(admin.ModelAdmin):
     list_display = [
-        "code", "nom", "type", "role", "devise",
-        "solde_actuel", "actif", "autoriser_decouvert",
+        "code", "nom", "provider", "type", "role", "devise",
+        "solde_actuel", "accepte_ventes", "par_defaut", "actif", "autoriser_decouvert",
     ]
-    list_filter = ["type", "role", "actif", "devise"]
-    search_fields = ["code", "nom"]
+    list_filter = ["type", "role", "provider__kind", "accepte_ventes", "par_defaut", "actif", "devise"]
+    search_fields = ["code", "nom", "provider__code", "provider__name"]
     readonly_fields = ["solde_initial", "solde_actuel", "dernier_recalcul", "created_at", "updated_at"]
     inlines = [MouvementCompteInline]
     fieldsets = (
-        (None, {"fields": ("code", "nom", "type", "role")}),
+        (None, {"fields": ("code", "nom", "provider", "identifiant", "type", "role")}),
         (_("Devise"), {"fields": ("devise", "taux_change", "devise_reference")}),
         (_("Solde"), {"fields": ("solde_initial", "solde_actuel", "dernier_recalcul")}),
+        (_("Usage"), {"fields": ("accepte_ventes", "par_defaut")}),
         (_("Découvert"), {"fields": ("autoriser_decouvert", "limite_decouvert")}),
         (_("Statut"), {"fields": ("actif", "date_ouverture", "date_fermeture")}),
         (_("Comptabilité"), {"fields": ("compte_comptable_code",)}),
         (_("Dates"), {"fields": ("created_at", "updated_at")}),
     )
+
+
+@admin.register(FinancialProvider)
+class FinancialProviderAdmin(admin.ModelAdmin):
+    list_display = [
+        "code", "name", "official_name", "kind", "country_code",
+        "active", "selectable", "sort_order",
+    ]
+    list_filter = ["country_code", "kind", "active", "selectable"]
+    search_fields = ["code", "name", "official_name"]
+    ordering = ["country_code", "sort_order", "name"]
 
 
 @admin.register(Devise)
