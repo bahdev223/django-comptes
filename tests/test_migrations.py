@@ -13,9 +13,20 @@ class TenantDataMigrationTest(TransactionTestCase):
         executor = MigrationExecutor(connection)
         historical_apps = executor.loader.project_state([self.migrate_to]).apps
 
+        Devise = historical_apps.get_model("comptes", "Devise")
         Compte = historical_apps.get_model("comptes", "Compte")
         ModePaiement = historical_apps.get_model("comptes", "ModePaiement")
         MouvementCompte = historical_apps.get_model("comptes", "MouvementCompte")
+
+        Devise.objects.get_or_create(
+            code="XOF",
+            defaults={
+                "nom": "Franc CFA BCEAO",
+                "code_numerique": "952",
+                "decimales": 0,
+                "symbole": "F CFA",
+            },
+        )
 
         compte = Compte.objects.create(
             entreprise_id="TENANT-A",
