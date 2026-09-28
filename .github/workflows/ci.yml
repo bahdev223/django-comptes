@@ -32,6 +32,7 @@ jobs:
           --health-retries 5
 
     env:
+      PYTHONPATH: .
       TEST_DATABASE: ${{ matrix.database }}
       POSTGRES_DB: django_comptes
       POSTGRES_USER: postgres
