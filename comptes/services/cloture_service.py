@@ -1,35 +1,31 @@
-from decimal import Decimal
-
 from django.db import transaction
-from django.utils import timezone
 
-from ..models import Compte, JournalCompte, ClotureCompte, PeriodeCloture
-from ..models import MouvementCompte, StatutMouvement, NatureMouvement
+from ..models import ClotureCompte, PeriodeCloture
+from ..permissions import require_comptes_permission
 from ..signals.mouvement import compte_cloture
 from .journal_service import JournalCompteService
 
 
 class ClotureCompteService:
-    """Cloture journaliere / periodique des comptes financiers."""
+    """Clôture journalière / périodique des comptes financiers."""
 
     @staticmethod
     @transaction.atomic
     def cloturer(compte, solde_reel=None, user=None, commentaire="", date_cloture=None):
         from datetime import date
 
+        require_comptes_permission(user, "cloturer")
+
         if date_cloture is None:
             date_cloture = date.today()
-
         if solde_reel is None:
             solde_reel = compte.solde_actuel
 
         journal = JournalCompteService.obtenir_ou_creer(compte, date_cloture)
-
         if journal.cloture:
-            raise ValueError(f"Journal deja cloture pour {compte.nom} le {date_cloture}")
+            raise ValueError(f"Journal déjà clôturé pour {compte.nom} le {date_cloture}")
 
         entrees, sorties = JournalCompteService.calculer_totaux(compte, date_cloture)
-
         solde_ouverture = compte.solde_actuel - entrees + sorties
         solde_theorique = solde_ouverture + entrees - sorties
         ecart = solde_reel - solde_theorique
@@ -56,13 +52,12 @@ class ClotureCompteService:
             cloture_par=user,
         )
 
-        compte_cloture.send(
+        transaction.on_commit(lambda: compte_cloture.send(
             sender=ClotureCompteService,
             instance=cloture,
             compte=compte,
             journal=journal,
             ecart=ecart,
             user=user,
-        )
-
+        ))
         return cloture

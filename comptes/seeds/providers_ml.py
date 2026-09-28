@@ -1,6 +1,9 @@
 from comptes.models import ProviderKind
 
 
+PROVIDERS_MALI_VERSION = "2026-09-28"
+
+
 PROVIDERS_MALI = [
     {
         "code": "CASH",
@@ -274,10 +277,10 @@ PROVIDERS_MALI = [
         "country_code": "ML",
         "logo": "providers/ml/mobile-money/t-lia.svg",
         "active": True,
-        "selectable": True,
+        "selectable": False,
         "sort_order": 370,
         "aliases": ["TLIA"],
-        "metadata": {"commercial_identity_check_recommended": True},
+        "metadata": {"commercial_identity_check_recommended": True, "selection_disabled_reason": "Vérification réglementaire/commerciale requise"},
     },
     {
         "code": "OPTIMA",
@@ -287,10 +290,10 @@ PROVIDERS_MALI = [
         "country_code": "ML",
         "logo": "providers/ml/mobile-money/optima.svg",
         "active": True,
-        "selectable": True,
+        "selectable": False,
         "sort_order": 380,
         "aliases": [],
-        "metadata": {"commercial_identity_check_recommended": True},
+        "metadata": {"commercial_identity_check_recommended": True, "selection_disabled_reason": "Vérification réglementaire/commerciale requise"},
     },
     {
         "code": "INTOUCH_MALI",

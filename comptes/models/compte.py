@@ -1,6 +1,8 @@
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
 
 from .managers import ComptesManager
@@ -94,7 +96,7 @@ class Compte(models.Model):
         max_length=20,
         blank=True,
         default="",
-        help_text=_("Code du plan comptable (ex: 5711, 5211, 5811). Lien symbolique, pas une FK."),
+        help_text=_("Code du plan comptable (ex: 5711, 5211, 5521). Lien symbolique, pas une FK."),
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -102,20 +104,20 @@ class Compte(models.Model):
 
     objects = ComptesManager()
 
-    # Preparation multi-entreprises. Vide tant que l'application ne sert
-    # qu'une entreprise ; le projet hote y place l'identifiant de son
-    # organisation le jour ou il en gere plusieurs. Un CharField plutot
-    # qu'une cle etrangere : le paquet reste ainsi utilisable sans
-    # connaitre le modele d'organisation de l'hote.
     entreprise_id = models.CharField(max_length=255, blank=True, default="", db_index=True)
 
     class Meta:
-        # Unicite par entreprise plutot que globale : deux entreprises
-        # doivent pouvoir employer le meme code.
         unique_together = [["entreprise_id", "code"]]
         verbose_name = _("Compte financier")
         verbose_name_plural = _("Comptes financiers")
         ordering = ["code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["entreprise_id"],
+                condition=Q(par_defaut=True),
+                name="compte_defaut_unique_par_entreprise",
+            ),
+        ]
         permissions = [
             ("encaisser", "Peut encaisser sur un compte"),
             ("decaisser", "Peut décaisser depuis un compte"),
@@ -128,10 +130,33 @@ class Compte(models.Model):
     def __str__(self):
         return f"{self.code} - {self.nom}"
 
+    def _validate_provider_type(self):
+        if not self.provider_id:
+            return
+        from .financial_provider import ProviderKind
+
+        expected = {
+            ProviderKind.CASH: TypeCompte.ESPECES,
+            ProviderKind.BANK: TypeCompte.BANQUE,
+            ProviderKind.MOBILE_MONEY: TypeCompte.MOBILE_MONEY,
+            ProviderKind.PAYMENT_INSTITUTION: TypeCompte.AUTRE,
+        }.get(self.provider.kind)
+
+        if expected and self.type != expected:
+            raise ValidationError({
+                "type": _(
+                    "Le type du compte est incompatible avec le fournisseur financier sélectionné."
+                )
+            })
+
+    def clean(self):
+        super().clean()
+        self._validate_provider_type()
+
     def save(self, *args, **kwargs):
-        # Préserve l'ouverture pour permettre un recalcul de solde déterministe.
         if self._state.adding and self.solde_initial == Decimal("0.00") and self.solde_actuel != Decimal("0.00"):
             self.solde_initial = self.solde_actuel
+        self._validate_provider_type()
         return super().save(*args, **kwargs)
 
     @property

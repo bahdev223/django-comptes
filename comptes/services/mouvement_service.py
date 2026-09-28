@@ -3,6 +3,9 @@ from decimal import Decimal
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from ..defaults import get_comptes_setting
+from ..exceptions import IdempotencyConflict
+from ..integrity import payload_hash
 from ..models import (
     Compte,
     MouvementCompte,
@@ -10,17 +13,19 @@ from ..models import (
     SensMouvement,
     StatutMouvement,
 )
-from ..signals.mouvement import mouvement_valide, mouvement_annule
-from ..defaults import get_comptes_setting
 from ..permissions import require_comptes_permission
-from .compte_service import CompteService
+from ..signals.mouvement import mouvement_annule, mouvement_valide
 
 
 class MouvementCompteService:
-    """Service metier des mouvements de compte."""
+    """Service métier des mouvements de compte."""
 
     @staticmethod
-    def encaisser(compte, montant, libelle, user, reference=None, source=None, idempotency_key=None):
+    def encaisser(
+        compte, montant, libelle, user, reference=None, source=None,
+        idempotency_key=None, source_system="", source_type="", source_id="",
+        source_reference="",
+    ):
         require_comptes_permission(user, "encaisser")
         return MouvementCompteService._creer(
             compte=compte,
@@ -31,10 +36,18 @@ class MouvementCompteService:
             reference=reference,
             source=source,
             idempotency_key=idempotency_key,
+            source_system=source_system,
+            source_type=source_type,
+            source_id=source_id,
+            source_reference=source_reference,
         )
 
     @staticmethod
-    def decaisser(compte, montant, libelle, user, reference=None, source=None, idempotency_key=None):
+    def decaisser(
+        compte, montant, libelle, user, reference=None, source=None,
+        idempotency_key=None, source_system="", source_type="", source_id="",
+        source_reference="",
+    ):
         require_comptes_permission(user, "decaisser")
         return MouvementCompteService._creer(
             compte=compte,
@@ -46,10 +59,17 @@ class MouvementCompteService:
             source=source,
             idempotency_key=idempotency_key,
             verifier_solde=True,
+            source_system=source_system,
+            source_type=source_type,
+            source_id=source_id,
+            source_reference=source_reference,
         )
 
     @staticmethod
-    def transfert(compte, montant, libelle, user, reference=None, source=None, sens=None):
+    def transfert(
+        compte, montant, libelle, user, reference=None, source=None, sens=None,
+        source_system="", source_type="", source_id="", source_reference="",
+    ):
         return MouvementCompteService._creer(
             compte=compte,
             nature=NatureMouvement.TRANSFERT,
@@ -59,10 +79,18 @@ class MouvementCompteService:
             reference=reference,
             source=source,
             sens=sens,
+            source_system=source_system,
+            source_type=source_type,
+            source_id=source_id,
+            source_reference=source_reference,
         )
 
     @staticmethod
-    def ajuster(compte, montant, libelle, user, reference=None, source=None, idempotency_key=None, sens=None):
+    def ajuster(
+        compte, montant, libelle, user, reference=None, source=None,
+        idempotency_key=None, sens=None, source_system="", source_type="",
+        source_id="", source_reference="",
+    ):
         require_comptes_permission(user, "change_compte")
         return MouvementCompteService._creer(
             compte=compte,
@@ -74,7 +102,44 @@ class MouvementCompteService:
             source=source,
             idempotency_key=idempotency_key,
             sens=sens,
+            source_system=source_system,
+            source_type=source_type,
+            source_id=source_id,
+            source_reference=source_reference,
         )
+
+    @staticmethod
+    def _payload(
+        compte, nature, sens, montant, libelle, reference,
+        source_system, source_type, source_id, source_reference, source,
+    ):
+        generic_source = None
+        if source is not None:
+            generic_source = {
+                "model": source._meta.label_lower,
+                "pk": str(source.pk),
+            }
+        return {
+            "compte_id": compte.pk,
+            "nature": str(nature),
+            "sens": str(sens),
+            "montant": format(montant, "f"),
+            "libelle": libelle or "",
+            "reference": reference or "",
+            "source_system": source_system or "",
+            "source_type": source_type or "",
+            "source_id": source_id or "",
+            "source_reference": source_reference or "",
+            "generic_source": generic_source,
+        }
+
+    @staticmethod
+    def _return_existing_or_conflict(existing, expected_hash):
+        if existing.payload_hash and existing.payload_hash != expected_hash:
+            raise IdempotencyConflict(
+                "La clé d'idempotence existe déjà avec un payload différent."
+            )
+        return existing
 
     @staticmethod
     @transaction.atomic
@@ -89,10 +154,20 @@ class MouvementCompteService:
         idempotency_key=None,
         verifier_solde=False,
         sens=None,
+        source_system="",
+        source_type="",
+        source_id="",
+        source_reference="",
     ):
         montant = Decimal(str(montant))
         if montant <= 0:
-            raise ValueError("Le montant doit etre positif")
+            raise ValueError("Le montant doit être positif")
+
+        sens_effectif = sens or MouvementCompteService._sens_par_nature(nature)
+        hash_value = payload_hash(MouvementCompteService._payload(
+            compte, nature, sens_effectif, montant, libelle, reference,
+            source_system, source_type, source_id, source_reference, source,
+        ))
 
         if idempotency_key:
             existing = MouvementCompte.objects.filter(
@@ -100,11 +175,14 @@ class MouvementCompteService:
                 idempotency_key=idempotency_key,
             ).first()
             if existing:
-                return existing
+                return MouvementCompteService._return_existing_or_conflict(
+                    existing, hash_value
+                )
 
         compte = Compte.objects.select_for_update().get(pk=compte.pk)
         if not compte.actif:
             raise ValueError(f"Le compte {compte.nom} est inactif")
+
         if get_comptes_setting("LOCK_CLOSED_PERIODS", True):
             from datetime import date
             from ..models import ClotureCompte, PeriodeCloture
@@ -129,15 +207,9 @@ class MouvementCompteService:
                 f"Requis: {montant:,.0f}"
             )
 
-        # Le lien vers l'objet d'origine est pose a la creation, et non
-        # apres : content_type et object_id figurent parmi les champs
-        # proteges par save(), qui refuse toute modification d'un
-        # mouvement deja valide. Le renseigner ensuite levait donc
-        # systematiquement, et le parametre source etait inutilisable.
         lien = {}
         if source:
             from django.contrib.contenttypes.models import ContentType
-
             lien = {
                 "content_type": ContentType.objects.get_for_model(source),
                 "object_id": source.pk,
@@ -149,20 +221,28 @@ class MouvementCompteService:
                     compte=compte,
                     nature=nature,
                     statut=StatutMouvement.VALIDE,
-                    sens=sens or MouvementCompteService._sens_par_nature(nature),
+                    sens=sens_effectif,
                     montant=montant,
                     libelle=libelle,
                     reference=reference,
                     entreprise_id=compte.entreprise_id,
                     idempotency_key=idempotency_key,
+                    payload_hash=hash_value,
+                    source_system=source_system or "",
+                    source_type=source_type or "",
+                    source_id=source_id or "",
+                    source_reference=source_reference or "",
                     created_by=user,
                     **lien,
                 )
         except IntegrityError:
             if idempotency_key:
-                return MouvementCompte.objects.get(
+                existing = MouvementCompte.objects.get(
                     entreprise_id=compte.entreprise_id,
                     idempotency_key=idempotency_key,
+                )
+                return MouvementCompteService._return_existing_or_conflict(
+                    existing, hash_value
                 )
             raise
 
@@ -170,11 +250,11 @@ class MouvementCompteService:
 
         if get_comptes_setting("EMIT_DOMAIN_EVENTS", True):
             transaction.on_commit(lambda: mouvement_valide.send(
-            sender=MouvementCompteService,
-            instance=mouvement,
-            nature=nature,
-            montant=montant,
-            user=user,
+                sender=MouvementCompteService,
+                instance=mouvement,
+                nature=nature,
+                montant=montant,
+                user=user,
             ))
 
         return mouvement
@@ -185,24 +265,37 @@ class MouvementCompteService:
         require_comptes_permission(user, "annuler")
         mouvement = MouvementCompte.objects.select_for_update().get(pk=mouvement.pk)
         if mouvement.statut == StatutMouvement.ANNULE:
-            raise ValueError("Ce mouvement est deja annule")
+            raise ValueError("Ce mouvement est déjà annulé")
 
-        ancien_statut = mouvement.statut
         mouvement.statut = StatutMouvement.ANNULE
         mouvement.annule = True
         mouvement.annule_le = timezone.now()
         mouvement.annule_par = user
         mouvement.save(update_fields=["statut", "annule", "annule_le", "annule_par"])
 
+        sens_annulation = (
+            SensMouvement.SORTIE if mouvement.est_entree else SensMouvement.ENTREE
+        )
+        annulation_payload = {
+            "mouvement_parent": mouvement.pk,
+            "sens": sens_annulation,
+            "montant": format(mouvement.montant, "f"),
+            "raison": raison or "",
+        }
         annulation = MouvementCompte.objects.create(
             compte=mouvement.compte,
             nature=NatureMouvement.ANNULATION,
             statut=StatutMouvement.VALIDE,
-            sens=SensMouvement.SORTIE if mouvement.est_entree else SensMouvement.ENTREE,
+            sens=sens_annulation,
             montant=mouvement.montant,
             libelle=f"ANNULATION - {mouvement.libelle} - {raison}".strip(),
             reference=mouvement.reference,
             entreprise_id=mouvement.entreprise_id,
+            payload_hash=payload_hash(annulation_payload),
+            source_system=mouvement.source_system,
+            source_type=mouvement.source_type,
+            source_id=mouvement.source_id,
+            source_reference=mouvement.source_reference,
             created_by=user,
             mouvement_parent=mouvement,
         )
@@ -213,10 +306,10 @@ class MouvementCompteService:
 
         if get_comptes_setting("EMIT_DOMAIN_EVENTS", True):
             transaction.on_commit(lambda: mouvement_annule.send(
-            sender=MouvementCompteService,
-            instance=mouvement,
-            annulation=annulation,
-            user=user,
+                sender=MouvementCompteService,
+                instance=mouvement,
+                annulation=annulation,
+                user=user,
             ))
 
         return annulation
@@ -235,6 +328,5 @@ class MouvementCompteService:
     @staticmethod
     def _mettre_a_jour_solde(compte, sens, montant):
         sign = +1 if sens == SensMouvement.ENTREE else -1
-
         compte.solde_actuel += sign * montant
         compte.save(update_fields=["solde_actuel"])

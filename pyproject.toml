@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "django-comptes"
-version = "0.1.0"
-description = "Universal financial accounts module for Django ERP — Cash, Bank, Mobile Money, Cards, Transfers, Reconciliation, Daily Closure"
+version = "0.2.0"
+description = "Reusable financial accounts engine for Django ERP — cash, bank, Mobile Money, transfers, reconciliation and closure"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
@@ -24,12 +24,14 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Office/Business :: Financial",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "Django>=4.2",
+    "Django>=5.2,<6.1",
     "django-appconf>=1.0",
 ]
 
@@ -38,11 +40,16 @@ api = [
     "djangorestframework>=3.14",
     "django-filter>=23.0",
 ]
+test = [
+    "pytest>=8",
+    "pytest-django>=4.8",
+    "psycopg[binary]>=3.2",
+]
 
 [project.urls]
-Homepage = "https://github.com/bah-dev/django-comptes"
-Repository = "https://github.com/bah-dev/django-comptes.git"
-Documentation = "https://github.com/bah-dev/django-comptes#readme"
+Homepage = "https://github.com/bahdev223/django-comptes"
+Repository = "https://github.com/bahdev223/django-comptes.git"
+Documentation = "https://github.com/bahdev223/django-comptes#readme"
 
 [tool.setuptools.packages.find]
 include = ["comptes*"]

@@ -16,6 +16,7 @@ PROVIDER_KIND_TO_TYPE_COMPTE = {
 
 class FinancialProviderService:
     @staticmethod
+    @transaction.atomic
     def synchroniser(providers):
         synced = []
         for data in providers:
@@ -27,6 +28,17 @@ class FinancialProviderService:
             )
             synced.append(provider)
         return synced
+
+    @staticmethod
+    def synchroniser_mali():
+        from ..seeds.providers_ml import PROVIDERS_MALI, PROVIDERS_MALI_VERSION
+
+        providers = FinancialProviderService.synchroniser(PROVIDERS_MALI)
+        return {
+            "version": PROVIDERS_MALI_VERSION,
+            "count": len(providers),
+            "providers": providers,
+        }
 
 
 class FinancialOnboardingService:

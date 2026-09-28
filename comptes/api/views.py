@@ -1,26 +1,53 @@
 from django.shortcuts import get_object_or_404
-from rest_framework import viewsets, permissions, status
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from ..exceptions import IdempotencyConflict
 from ..models import (
-    Compte, Devise, FinancialProvider, ModePaiement, MouvementCompte, TransfertCompte,
-    JournalCompte, RapprochementBancaire, ClotureCompte,
+    ClotureCompte,
+    Compte,
+    Devise,
+    FinancialProvider,
+    JournalCompte,
+    ModePaiement,
+    MouvementCompte,
+    RapprochementBancaire,
+    TransfertCompte,
 )
-from ..services import (
-    MouvementCompteService, TransfertCompteService,
-    ClotureCompteService, CompteService,
-)
-from ..selectors import ConfigurationFinanciereSelector, DashboardSelector, MouvementSelector
 from ..permissions import ComptesPermission
 from ..scoping import EntrepriseScopedViewSetMixin, scoping_enabled
-from .serializers import (
-    AjustementInputSerializer, CompteSerializer, DeviseSerializer, FinancialProviderSerializer,
-    ModePaiementSerializer, MouvementCompteSerializer, MouvementInputSerializer,
-    TransfertInputSerializer,
-    TransfertCompteSerializer, JournalCompteSerializer,
-    RapprochementBancaireSerializer, ClotureCompteSerializer,
+from ..selectors import ConfigurationFinanciereSelector, DashboardSelector
+from ..services import (
+    CompteService,
+    MouvementCompteService,
+    RapprochementService,
+    TransfertCompteService,
 )
+from .serializers import (
+    AjustementInputSerializer,
+    ClotureCompteSerializer,
+    CompteSerializer,
+    DeviseSerializer,
+    FinancialProviderSerializer,
+    JournalCompteSerializer,
+    LigneReleveInputSerializer,
+    ModePaiementSerializer,
+    MouvementCompteSerializer,
+    MouvementInputSerializer,
+    RapprochementBancaireSerializer,
+    RapprochementInitialiserSerializer,
+    RapprochementLigneSerializer,
+    TransfertCompteSerializer,
+    TransfertInputSerializer,
+)
+
+
+def _idempotency_conflict_response(exc):
+    return Response(
+        {"detail": str(exc), "code": "idempotency_conflict"},
+        status=status.HTTP_409_CONFLICT,
+    )
 
 
 class CompteViewSet(EntrepriseScopedViewSetMixin, viewsets.ModelViewSet):
@@ -41,31 +68,38 @@ class CompteViewSet(EntrepriseScopedViewSetMixin, viewsets.ModelViewSet):
     def historique(self, request, pk=None):
         compte = self.get_object()
         h = compte.historique.all().order_by("-created_at")[:50]
-        data = [
+        return Response([
             {
                 "date": x.created_at.isoformat(),
                 "type": x.type_changement,
                 "ancien": x.ancienne_valeur,
                 "nouveau": x.nouvelle_valeur,
+                "commentaire": x.commentaire,
             }
             for x in h
-        ]
-        return Response(data)
+        ])
 
     @action(detail=False, methods=["get"])
     def synthese(self, request):
-        tenant_filter = {"entreprise_id": self.get_entreprise_id()} if scoping_enabled() else {}
-        selector = DashboardSelector(tenant_filter=tenant_filter)
-        return Response(selector.synthese_globale())
+        tenant_filter = (
+            {"entreprise_id": self.get_entreprise_id()} if scoping_enabled() else {}
+        )
+        return Response(DashboardSelector(tenant_filter=tenant_filter).synthese_globale())
 
     @action(detail=False, methods=["get"])
     def configuration(self, request):
         entreprise_id = self.get_entreprise_id() if scoping_enabled() else ""
-        selector = ConfigurationFinanciereSelector(entreprise_id=entreprise_id)
-        return Response(selector.configuration())
+        return Response(
+            ConfigurationFinanciereSelector(entreprise_id=entreprise_id).configuration()
+        )
 
 
-class FinancialProviderViewSet(viewsets.ModelViewSet):
+class FinancialProviderViewSet(viewsets.ReadOnlyModelViewSet):
+    """Référentiel global en lecture seule via API.
+
+    Les mutations passent par les seeds/services d'administration de la plateforme.
+    """
+
     queryset = FinancialProvider.objects.all()
     serializer_class = FinancialProviderSerializer
     permission_classes = [ComptesPermission]
@@ -74,7 +108,10 @@ class FinancialProviderViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        country = self.request.query_params.get("country") or self.request.query_params.get("country_code")
+        country = (
+            self.request.query_params.get("country")
+            or self.request.query_params.get("country_code")
+        )
         kind = self.request.query_params.get("kind")
         if country:
             qs = qs.filter(country_code=country.upper())
@@ -84,8 +121,6 @@ class FinancialProviderViewSet(viewsets.ModelViewSet):
 
 
 class ModePaiementViewSet(EntrepriseScopedViewSetMixin, viewsets.ModelViewSet):
-    """Référentiel des seuls modes de paiement acceptés par l'organisation."""
-
     queryset = ModePaiement.objects.prefetch_related("comptes")
     serializer_class = ModePaiementSerializer
     permission_classes = [ComptesPermission]
@@ -113,59 +148,83 @@ class MouvementCompteViewSet(EntrepriseScopedViewSetMixin, viewsets.ReadOnlyMode
         "annuler": "annuler",
     }
     filterset_fields = ["compte", "nature", "statut"]
-    search_fields = ["libelle", "reference"]
+    search_fields = ["libelle", "reference", "source_reference"]
+
+    def _trace_kwargs(self, data):
+        return {
+            "source_system": data.get("source_system", ""),
+            "source_type": data.get("source_type", ""),
+            "source_id": data.get("source_id", ""),
+            "source_reference": data.get("source_reference", ""),
+        }
 
     @action(detail=False, methods=["post"])
     def encaisser(self, request):
         serializer = MouvementInputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        compte = self._get_scoped_compte(serializer.validated_data["compte_id"])
-        mvt = MouvementCompteService.encaisser(
-            compte=compte,
-            montant=serializer.validated_data["montant"],
-            libelle=serializer.validated_data.get("libelle", ""),
-            user=request.user,
-            reference=serializer.validated_data.get("reference", ""),
-            idempotency_key=serializer.validated_data.get("idempotency_key"),
-        )
+        data = serializer.validated_data
+        compte = self._get_scoped_compte(data["compte_id"])
+        try:
+            mvt = MouvementCompteService.encaisser(
+                compte=compte,
+                montant=data["montant"],
+                libelle=data.get("libelle", ""),
+                user=request.user,
+                reference=data.get("reference", ""),
+                idempotency_key=data.get("idempotency_key"),
+                **self._trace_kwargs(data),
+            )
+        except IdempotencyConflict as exc:
+            return _idempotency_conflict_response(exc)
         return Response(MouvementCompteSerializer(mvt).data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["post"])
     def decaisser(self, request):
         serializer = MouvementInputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        compte = self._get_scoped_compte(serializer.validated_data["compte_id"])
-        mvt = MouvementCompteService.decaisser(
-            compte=compte,
-            montant=serializer.validated_data["montant"],
-            libelle=serializer.validated_data.get("libelle", ""),
-            user=request.user,
-            reference=serializer.validated_data.get("reference", ""),
-            idempotency_key=serializer.validated_data.get("idempotency_key"),
-        )
+        data = serializer.validated_data
+        compte = self._get_scoped_compte(data["compte_id"])
+        try:
+            mvt = MouvementCompteService.decaisser(
+                compte=compte,
+                montant=data["montant"],
+                libelle=data.get("libelle", ""),
+                user=request.user,
+                reference=data.get("reference", ""),
+                idempotency_key=data.get("idempotency_key"),
+                **self._trace_kwargs(data),
+            )
+        except IdempotencyConflict as exc:
+            return _idempotency_conflict_response(exc)
         return Response(MouvementCompteSerializer(mvt).data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["post"])
     def ajuster(self, request):
         serializer = AjustementInputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        compte = self._get_scoped_compte(serializer.validated_data["compte_id"])
-        mvt = MouvementCompteService.ajuster(
-            compte=compte,
-            montant=serializer.validated_data["montant"],
-            libelle=serializer.validated_data.get("libelle", ""),
-            user=request.user,
-            reference=serializer.validated_data.get("reference", ""),
-            idempotency_key=serializer.validated_data.get("idempotency_key"),
-            sens=serializer.validated_data.get("sens"),
-        )
+        data = serializer.validated_data
+        compte = self._get_scoped_compte(data["compte_id"])
+        try:
+            mvt = MouvementCompteService.ajuster(
+                compte=compte,
+                montant=data["montant"],
+                libelle=data.get("libelle", ""),
+                user=request.user,
+                reference=data.get("reference", ""),
+                idempotency_key=data.get("idempotency_key"),
+                sens=data.get("sens"),
+                **self._trace_kwargs(data),
+            )
+        except IdempotencyConflict as exc:
+            return _idempotency_conflict_response(exc)
         return Response(MouvementCompteSerializer(mvt).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"])
     def annuler(self, request, pk=None):
-        mvt = self.get_object()
         annulation = MouvementCompteService.annuler(
-            mvt, user=request.user, raison=request.data.get("raison", "")
+            self.get_object(),
+            user=request.user,
+            raison=request.data.get("raison", ""),
         )
         return Response(MouvementCompteSerializer(annulation).data)
 
@@ -187,39 +246,116 @@ class TransfertCompteViewSet(EntrepriseScopedViewSetMixin, viewsets.ReadOnlyMode
     def transferer(self, request):
         serializer = TransfertInputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
         comptes = Compte.objects.all()
         if scoping_enabled():
             comptes = comptes.filter(entreprise_id=self.get_entreprise_id())
-        source = get_object_or_404(comptes, id=serializer.validated_data["source_id"])
-        destination = get_object_or_404(comptes, id=serializer.validated_data["destination_id"])
-        transfert = TransfertCompteService.transferer(
-            source=source,
-            destination=destination,
-            montant=serializer.validated_data["montant"],
-            user=request.user,
-            notes=serializer.validated_data.get("notes", ""),
-            idempotency_key=serializer.validated_data.get("idempotency_key"),
+        source = get_object_or_404(comptes, id=data["source_id"])
+        destination = get_object_or_404(comptes, id=data["destination_id"])
+        try:
+            transfert = TransfertCompteService.transferer(
+                source=source,
+                destination=destination,
+                montant=data["montant"],
+                user=request.user,
+                notes=data.get("notes", ""),
+                idempotency_key=data.get("idempotency_key"),
+                source_system=data.get("source_system", ""),
+                source_type=data.get("source_type", ""),
+                external_source_id=data.get("external_source_id", ""),
+                source_reference=data.get("source_reference", ""),
+            )
+        except IdempotencyConflict as exc:
+            return _idempotency_conflict_response(exc)
+        return Response(
+            TransfertCompteSerializer(transfert).data,
+            status=status.HTTP_201_CREATED,
         )
-        return Response(TransfertCompteSerializer(transfert).data, status=status.HTTP_201_CREATED)
 
 
-class JournalCompteViewSet(viewsets.ReadOnlyModelViewSet):
+class JournalCompteViewSet(EntrepriseScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
     queryset = JournalCompte.objects.select_related("compte")
+    entreprise_scope_field = "compte__entreprise_id"
     serializer_class = JournalCompteSerializer
     permission_classes = [ComptesPermission]
 
 
-class RapprochementBancaireViewSet(viewsets.ModelViewSet):
+class RapprochementBancaireViewSet(
+    EntrepriseScopedViewSetMixin, viewsets.ReadOnlyModelViewSet
+):
     queryset = RapprochementBancaire.objects.select_related("compte")
+    entreprise_scope_field = "compte__entreprise_id"
     serializer_class = RapprochementBancaireSerializer
     permission_classes = [ComptesPermission]
     permission_actions = {
-        "create": "rapprocher", "update": "rapprocher",
-        "partial_update": "rapprocher", "destroy": "rapprocher",
+        "initialiser": "rapprocher",
+        "pointer": "rapprocher",
+        "depointer": "rapprocher",
+        "ajouter_ligne_releve": "rapprocher",
+        "valider": "rapprocher",
     }
 
+    @action(detail=False, methods=["post"])
+    def initialiser(self, request):
+        serializer = RapprochementInitialiserSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        comptes = Compte.objects.all()
+        if scoping_enabled():
+            comptes = comptes.filter(entreprise_id=self.get_entreprise_id())
+        compte = get_object_or_404(comptes, pk=data["compte_id"])
+        rapprochement = RapprochementService.initialiser(
+            compte=compte,
+            date_debut=data["date_debut"],
+            date_fin=data["date_fin"],
+            solde_releve=data["solde_releve"],
+            date_releve=data.get("date_releve"),
+            user=request.user,
+        )
+        return Response(
+            RapprochementBancaireSerializer(rapprochement).data,
+            status=status.HTTP_201_CREATED,
+        )
 
-class ClotureCompteViewSet(viewsets.ReadOnlyModelViewSet):
+    @action(detail=True, methods=["post"])
+    def pointer(self, request, pk=None):
+        serializer = RapprochementLigneSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        rapprochement = RapprochementService.pointer(
+            self.get_object(), serializer.validated_data["ligne_id"], user=request.user
+        )
+        return Response(RapprochementBancaireSerializer(rapprochement).data)
+
+    @action(detail=True, methods=["post"])
+    def depointer(self, request, pk=None):
+        serializer = RapprochementLigneSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        rapprochement = RapprochementService.depointer(
+            self.get_object(), serializer.validated_data["ligne_id"], user=request.user
+        )
+        return Response(RapprochementBancaireSerializer(rapprochement).data)
+
+    @action(detail=True, methods=["post"], url_path="ajouter-ligne-releve")
+    def ajouter_ligne_releve(self, request, pk=None):
+        serializer = LigneReleveInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ligne = RapprochementService.ajouter_ligne_releve(
+            self.get_object(),
+            user=request.user,
+            **serializer.validated_data,
+        )
+        return Response({"id": ligne.pk}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"])
+    def valider(self, request, pk=None):
+        rapprochement = RapprochementService.valider(
+            self.get_object(), user=request.user
+        )
+        return Response(RapprochementBancaireSerializer(rapprochement).data)
+
+
+class ClotureCompteViewSet(EntrepriseScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
     queryset = ClotureCompte.objects.select_related("compte", "cloture_par")
+    entreprise_scope_field = "compte__entreprise_id"
     serializer_class = ClotureCompteSerializer
     permission_classes = [ComptesPermission]

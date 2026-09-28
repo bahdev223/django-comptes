@@ -6,6 +6,7 @@ from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
 
 from .compte import Compte
+from .immutable import ImmutableFinancialManager
 
 
 class NatureMouvement(models.TextChoices):
@@ -31,6 +32,8 @@ class SensMouvement(models.TextChoices):
 
 
 class MouvementCompte(models.Model):
+    objects = ImmutableFinancialManager()
+
     compte = models.ForeignKey(
         Compte, on_delete=models.PROTECT, related_name="mouvements", verbose_name=_("Compte")
     )

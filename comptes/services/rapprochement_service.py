@@ -5,24 +5,32 @@ from django.db.models import Case, DecimalField, F, Sum, When
 from django.utils import timezone
 
 from ..models import (
-    Compte,
-    RapprochementBancaire,
     LigneRapprochement,
     MouvementCompte,
-    StatutMouvement,
     NatureMouvement,
+    RapprochementBancaire,
     SensMouvement,
+    StatutMouvement,
     StatutRapprochement,
+    TypeCompte,
 )
-from ..selectors import MouvementSelector
+from ..permissions import require_comptes_permission
+from ..signals.mouvement import rapprochement_valide
 
 
 class RapprochementService:
-    """Rapprochement bancaire — pointage entre relevé et écritures."""
+    """Rapprochement bancaire — toutes les mutations passent par ce service."""
 
     @staticmethod
     @transaction.atomic
-    def initialiser(compte, date_debut, date_fin, solde_releve, date_releve=None):
+    def initialiser(
+        compte, date_debut, date_fin, solde_releve, date_releve=None, user=None
+    ):
+        require_comptes_permission(user, "rapprocher")
+        if compte.type != TypeCompte.BANQUE:
+            raise ValueError("Le rapprochement est réservé aux comptes bancaires.")
+        if date_debut > date_fin:
+            raise ValueError("La date de début doit précéder la date de fin.")
         if date_releve is None:
             date_releve = date_fin
 
@@ -47,7 +55,10 @@ class RapprochementService:
             default=-F("montant"),
             output_field=DecimalField(max_digits=15, decimal_places=2),
         )
-        solde_comptable = mouvements_comptables.aggregate(total=Sum(signe))["total"] or Decimal("0.00")
+        solde_comptable = (
+            mouvements_comptables.aggregate(total=Sum(signe))["total"]
+            or Decimal("0.00")
+        )
 
         rapprochement = RapprochementBancaire.objects.create(
             compte=compte,
@@ -60,10 +71,8 @@ class RapprochementService:
             statut=StatutRapprochement.EN_COURS,
         )
 
-        mouvements = mouvements_comptables
-
-        for mvt in mouvements:
-            LigneRapprochement.objects.create(
+        LigneRapprochement.objects.bulk_create([
+            LigneRapprochement(
                 rapprochement=rapprochement,
                 mouvement=mvt,
                 type_ligne="COMPTABLE",
@@ -71,32 +80,37 @@ class RapprochementService:
                 date_operation=mvt.date.date(),
                 libelle=mvt.libelle,
             )
-
+            for mvt in mouvements_comptables
+        ])
         return rapprochement
 
     @staticmethod
-    def pointer(rapprochement, ligne_id):
-        """Marque une ligne comme pointée."""
+    def pointer(rapprochement, ligne_id, user=None):
+        require_comptes_permission(user, "rapprocher")
         ligne = rapprochement.lignes.filter(id=ligne_id).first()
-        if ligne:
-            ligne.pointe = True
-            ligne.save(update_fields=["pointe"])
-            RapprochementService._mettre_a_jour_statut(rapprochement)
+        if not ligne:
+            raise ValueError("Ligne de rapprochement introuvable.")
+        ligne.pointe = True
+        ligne.save(update_fields=["pointe"])
+        RapprochementService._mettre_a_jour_statut(rapprochement)
         return rapprochement
 
     @staticmethod
-    def depointer(rapprochement, ligne_id):
-        """Démarque une ligne pointée."""
+    def depointer(rapprochement, ligne_id, user=None):
+        require_comptes_permission(user, "rapprocher")
         ligne = rapprochement.lignes.filter(id=ligne_id).first()
-        if ligne:
-            ligne.pointe = False
-            ligne.save(update_fields=["pointe"])
-            RapprochementService._mettre_a_jour_statut(rapprochement)
+        if not ligne:
+            raise ValueError("Ligne de rapprochement introuvable.")
+        ligne.pointe = False
+        ligne.save(update_fields=["pointe"])
+        RapprochementService._mettre_a_jour_statut(rapprochement)
         return rapprochement
 
     @staticmethod
-    def ajouter_ligne_releve(rapprochement, montant, date_operation, libelle, commentaire=""):
-        """Ajoute une ligne issue du relevé bancaire (non présente en comptabilité)."""
+    def ajouter_ligne_releve(
+        rapprochement, montant, date_operation, libelle, commentaire="", user=None
+    ):
+        require_comptes_permission(user, "rapprocher")
         return LigneRapprochement.objects.create(
             rapprochement=rapprochement,
             type_ligne="RELEVE",
@@ -110,30 +124,37 @@ class RapprochementService:
     @staticmethod
     @transaction.atomic
     def valider(rapprochement, user=None):
-        """Valide le rapprochement et bascule les mouvements en RAPPROCHE."""
+        require_comptes_permission(user, "rapprocher")
+        rapprochement = RapprochementBancaire.objects.select_for_update().get(
+            pk=rapprochement.pk
+        )
         lignes_non_pointees = rapprochement.lignes.filter(
             type_ligne="COMPTABLE", pointe=False
         )
-
         if lignes_non_pointees.exists():
             raise ValueError(
                 f"{lignes_non_pointees.count()} ligne(s) comptable(s) non pointée(s)"
             )
 
         lignes_ecart = rapprochement.lignes.filter(type_ligne="RELEVE")
-        if lignes_ecart.exists():
-            rapprochement.statut = StatutRapprochement.ECART
-        else:
-            rapprochement.statut = StatutRapprochement.EQUILIBRE
-
+        rapprochement.statut = (
+            StatutRapprochement.ECART
+            if lignes_ecart.exists()
+            else StatutRapprochement.EQUILIBRE
+        )
         rapprochement.date_validation = timezone.now()
-        rapprochement.save()
+        rapprochement.save(update_fields=["statut", "date_validation"])
 
         for ligne in rapprochement.lignes.filter(type_ligne="COMPTABLE", pointe=True):
-            if ligne.mouvement:
+            if ligne.mouvement and ligne.mouvement.statut == StatutMouvement.VALIDE:
                 ligne.mouvement.statut = StatutMouvement.RAPPROCHE
                 ligne.mouvement.save(update_fields=["statut"])
 
+        transaction.on_commit(lambda: rapprochement_valide.send(
+            sender=RapprochementService,
+            instance=rapprochement,
+            user=user,
+        ))
         return rapprochement
 
     @staticmethod
@@ -142,12 +163,13 @@ class RapprochementService:
         pointees = rapprochement.lignes.filter(pointe=True).count()
 
         if total == 0:
-            rapprochement.statut = StatutRapprochement.EN_COURS
+            statut = StatutRapprochement.EN_COURS
         elif pointees == total:
-            rapprochement.statut = StatutRapprochement.EQUILIBRE
+            statut = StatutRapprochement.EQUILIBRE
         elif pointees > 0:
-            rapprochement.statut = StatutRapprochement.PARTIEL
+            statut = StatutRapprochement.PARTIEL
         else:
-            rapprochement.statut = StatutRapprochement.EN_COURS
+            statut = StatutRapprochement.EN_COURS
 
+        rapprochement.statut = statut
         rapprochement.save(update_fields=["statut"])

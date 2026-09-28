@@ -1,177 +1,148 @@
 # django-comptes
 
-**Module universel de gestion des comptes financiers** pour Django.
+Moteur réutilisable de comptes financiers pour ERP Django : espèces, banques, Mobile Money, transferts, clôtures et rapprochements.
 
-Gère tous les types de comptes (Espèces, Banque, Mobile Money, Carte, Portefeuille numérique) avec historique infalsifiable, transfers inter-comptes, clotures journalières et rapprochements bancaires.
+Le package est conçu pour servir aussi bien une application **mono-entreprise** qu'un SaaS **multi-entreprise**, sans imposer de modèle `Entreprise` au projet hôte.
 
-Conçu comme un **module ERP réutilisable** : aucune dépendance vers des modèles métier spécifiques (client, fournisseur, école, hôpital). Utilise un système de signaux pour notifier les autres modules sans couplage.
+## Principes
 
-## Fonctionnalités
+- `Compte` représente une caisse, une banque, un compte Mobile Money ou un autre support financier.
+- Les mouvements validés sont protégés contre les modifications et suppressions applicatives directes.
+- Les écritures métier passent par des services transactionnels.
+- Les transferts verrouillent les comptes avec `select_for_update()`.
+- L'idempotence est isolée par entreprise et vérifie le hash du payload.
+- Les références externes (`source_system`, `source_type`, `source_id`, `source_reference`) permettent de relier un mouvement à Fournea, Néré, SahelPOS ou un autre ERP.
+- Le module reste découplé de `django-comptabilite-ohada` ; l'intégration comptable se fait par événements/signaux.
 
-- **Comptes universels** : Espèces, Banque, Mobile Money, Carte, Portefeuille numérique
-- **Mouvements typés** : Encaissement, Décaissement, Transfert, Ajustement, Ouverture, Clôture, Annulation
-- **Suivi d'état** : Brouillon, Validé, Annulé, Rapproché
-- **Transferts atomiques** entre comptes
-- **Clôture journalière/périodique** avec calcul des écarts
-- **Rapprochement bancaire** complet
-- **Historique d'audit** de chaque compte
-- **Multi-devise** prêt (taux de change, devise de référence)
-- **Permissions fines** par opération
-- **API REST** complète (DRF)
-- **Signal-based architecture** — découplé du module comptabilité
+> La protection fournie est une immutabilité applicative renforcée, pas un registre cryptographiquement inviolable ni une protection contre un administrateur SQL.
 
 ## Installation
 
 ```bash
-pip install django-comptes
+pip install -e ".[api]"
 ```
-
-ou depuis le dépôt :
-
-```bash
-pip install git+https://github.com/bah-dev/django-comptes.git
-```
-
-## Configuration rapide
-
-1. Ajouter `'comptes'` à `INSTALLED_APPS` :
 
 ```python
 INSTALLED_APPS = [
     ...
-    'comptes',
+    "comptes",
 ]
 ```
-
-2. Inclure les URLs :
 
 ```python
 urlpatterns = [
-    ...
-    path('comptes/', include('comptes.urls')),
-    path('api/', include('comptes.urls_api')),
+    path("api/", include("comptes.urls_api")),
 ]
 ```
-
-3. Lancer les migrations :
 
 ```bash
 python manage.py migrate comptes
 ```
 
-## Configuration avancée
+## Mono-entreprise
+
+Par défaut :
 
 ```python
-# settings.py
 COMPTES = {
-    'DEFAULT_CURRENCY': 'XOF',
-    'ALLOW_OVERDRAFT': False,
-    'AUTO_CREATE_ACCOUNTING_ENTRIES': True,
+    "SCOPING_ENABLED": False,
+    "DEFAULT_CURRENCY": "XOF",
 }
 ```
 
-## Architecture
+`entreprise_id=""` reste valide. Ce mode convient aux installations locales ou aux ERP qui ne gèrent qu'une organisation.
 
-```
-comptes/
-├── models/
-│   ├── compte.py              # Compte financier
-│   ├── mouvement_compte.py    # Mouvements typés
-│   ├── transfert_compte.py    # Transferts inter-comptes
-│   ├── journal_compte.py      # Journaux quotidiens
-│   ├── rapprochement.py       # Rapprochement bancaire
-│   ├── cloture.py             # Clôtures périodiques
-│   ├── historique_compte.py   # Audit trail
-│   ├── favori.py              # Comptes favoris/défaut
-│   └── managers.py            # QuerySet personnalisé
-├── services/
-│   ├── compte_service.py
-│   ├── mouvement_service.py
-│   ├── transfert_service.py
-│   ├── journal_service.py
-│   ├── cloture_service.py
-│   └── rapprochement_service.py
-├── signals/                   # Signaux découplés
-├── api/                       # DRF ViewSets
-├── selectors.py               # Requêtes de lecture
-├── permissions.py             # Permissions fines
-└── defaults.py                # Configuration
-```
+## Multi-entreprise
 
-## Utilisation
-
-### Créer un compte
+En SaaS, activez explicitement le scoping :
 
 ```python
-from comptes.models import Compte
-from comptes.services import CompteService
-
-compte = CompteService.creer(
-    code="CP-001",
-    nom="Caisse Principale",
-    type_compte="ESPECES",
-    solde_initial=Decimal("100000.00"),
-    devise="XOF",
-)
+COMPTES = {
+    "SCOPING_ENABLED": True,
+    "SCOPE_RESOLVER": "mon_projet.tenancy.resolve_entreprise_id",
+    "DEFAULT_CURRENCY": "XOF",
+}
 ```
 
-### Encaisser / Décaisser
+Le resolver doit retourner un identifiant non vide :
 
 ```python
-from comptes.services import MouvementCompteService
-
-# Encaissement
-MouvementCompteService.encaisser(
-    compte=compte, montant=50000,
-    libelle="Vente du jour", user=request.user,
-)
-
-# Décaissement (avec contrôle du solde)
-MouvementCompteService.decaisser(
-    compte=compte, montant=15000,
-    libelle="Achat fournitures", user=request.user,
-)
+def resolve_entreprise_id(request):
+    return str(request.user.entreprise_id)
 ```
 
-### Transférer entre comptes
+Quand le scoping est activé, l'absence de tenant provoque un refus d'accès. Il n'existe plus de fallback silencieux vers `entreprise_id=""`.
+
+Avant d'activer le scoping sur une base historique, affectez un `entreprise_id` aux comptes existants. La migration `0008` backfill automatiquement les mouvements, transferts et modes de paiement lorsqu'ils peuvent être dérivés de leurs comptes.
+
+## Idempotence et synchronisation offline
+
+Pour une vente synchronisée depuis Fournea :
 
 ```python
-from comptes.services import TransfertCompteService
-
-TransfertCompteService.transferer(
-    source=compte_caisse,
-    destination=compte_banque,
-    montant=30000,
-    user=request.user,
-    notes="Dépôt banque hebdomadaire",
+mouvement = MouvementCompteService.encaisser(
+    compte=caisse,
+    montant="15000.00",
+    libelle="Vente",
+    user=user,
+    idempotency_key="fournea:sale:42",
+    source_system="fournea",
+    source_type="sale",
+    source_id="42",
+    source_reference="TICKET-0042",
 )
 ```
 
-### Clôture journalière
+- même clé + même payload : le même mouvement est retourné ;
+- même clé + payload différent : `IdempotencyConflict`.
 
-```python
-from comptes.services import ClotureCompteService
+C'est adapté aux retries d'une file de synchronisation offline-first.
 
-cloture = ClotureCompteService.cloturer(
-    compte=compte,
-    solde_reel=Decimal("135000.00"),
-    user=request.user,
-)
+## Providers Mali
+
+Le package fournit un référentiel Mali comprenant les banques, Mobile Money et établissements de paiement utilisés par le moteur d'onboarding.
+
+Les providers globaux sont **en lecture seule dans l'API REST**. Leur mutation passe par les seeds/services d'administration de la plateforme.
+
+Les providers dont l'identité réglementaire ou commerciale doit encore être vérifiée restent `selectable=False`.
+
+## Permissions
+
+Permissions métier principales :
+
+- `comptes.encaisser`
+- `comptes.decaisser`
+- `comptes.transferer`
+- `comptes.annuler`
+- `comptes.cloturer`
+- `comptes.rapprocher`
+
+Les services critiques vérifient également les permissions lorsqu'un utilisateur est fourni. `user=None` est réservé aux opérations système contrôlées.
+
+## Rapprochement
+
+L'API de rapprochement n'est plus un CRUD générique. Les mutations passent par des actions métier :
+
+- `POST /rapprochements/initialiser/`
+- `POST /rapprochements/{id}/pointer/`
+- `POST /rapprochements/{id}/depointer/`
+- `POST /rapprochements/{id}/ajouter-ligne-releve/`
+- `POST /rapprochements/{id}/valider/`
+
+## Tests
+
+```bash
+pip install -e ".[api,test]"
+pytest -q
 ```
 
-## Signaux disponibles
+La CI couvre SQLite et PostgreSQL sur plusieurs versions Python et vérifie également qu'aucune migration n'est manquante.
 
-Le module émet des signaux Django standards que d'autres apps peuvent écouter :
+## Compatibilité
 
-```python
-from comptes.signals.mouvement import (
-    mouvement_valide,
-    mouvement_annule,
-    transfert_effectue,
-    compte_cloture,
-    rapprochement_valide,
-)
-```
+- Python >= 3.10
+- Django >= 5.2 et < 6.1
+- DRF et django-filter via l'extra `api`
 
 ## Licence
 
