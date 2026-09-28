@@ -12,7 +12,6 @@ from ..models import (
     SensMouvement,
     StatutMouvement,
     StatutRapprochement,
-    TypeCompte,
 )
 from ..permissions import require_comptes_permission
 from ..signals.mouvement import rapprochement_valide
@@ -27,8 +26,6 @@ class RapprochementService:
         compte, date_debut, date_fin, solde_releve, date_releve=None, user=None
     ):
         require_comptes_permission(user, "rapprocher")
-        if compte.type != TypeCompte.BANQUE:
-            raise ValueError("Le rapprochement est réservé aux comptes bancaires.")
         if date_debut > date_fin:
             raise ValueError("La date de début doit précéder la date de fin.")
         if date_releve is None:

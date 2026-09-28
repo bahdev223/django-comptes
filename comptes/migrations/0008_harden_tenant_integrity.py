@@ -26,6 +26,15 @@ def _copy_legacy_payment_links(apps, schema_editor):
         )
 
 
+def _drop_legacy_payment_links(schema_editor):
+    tables = set(schema_editor.connection.introspection.table_names())
+    if LEGACY_M2M_TABLE not in tables:
+        return
+    quote = schema_editor.connection.ops.quote_name
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute(f"DROP TABLE {quote(LEGACY_M2M_TABLE)}")
+
+
 def _backfill_tenants(apps, schema_editor):
     MouvementCompte = apps.get_model("comptes", "MouvementCompte")
     TransfertCompte = apps.get_model("comptes", "TransfertCompte")
@@ -94,6 +103,7 @@ def forwards(apps, schema_editor):
     _copy_legacy_payment_links(apps, schema_editor)
     _backfill_tenants(apps, schema_editor)
     _normalize_default_accounts(apps, schema_editor)
+    _drop_legacy_payment_links(schema_editor)
 
 
 class Migration(migrations.Migration):
@@ -122,7 +132,9 @@ class Migration(migrations.Migration):
             name="source_reference",
             field=models.CharField(blank=True, default="", max_length=120),
         ),
-        migrations.RunPython(forwards, migrations.RunPython.noop),
+        # Cette migration détruit l'ancienne table M2M après copie. Un rollback
+        # vers 0007/0006 ne peut pas garantir la restitution fidèle des données.
+        migrations.RunPython(forwards),
         migrations.AddConstraint(
             model_name="compte",
             constraint=models.UniqueConstraint(
