@@ -96,7 +96,7 @@ class Compte(models.Model):
         max_length=20,
         blank=True,
         default="",
-        help_text=_("Code du plan comptable (ex: 5711, 5211, 5521). Lien symbolique, pas une FK."),
+        help_text=_("Code du plan comptable (ex: 5711, 5211, 5811). Lien symbolique, pas une FK."),
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

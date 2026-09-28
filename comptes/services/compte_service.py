@@ -92,9 +92,16 @@ class CompteService:
         compte.save()
 
         for attr, ancien, nouveau in changements:
+            audit_type = CompteService.TYPE_AUDIT.get(attr, TypeChangement.AUTRE)
+            if attr == "actif":
+                audit_type = (
+                    TypeChangement.ACTIVATION
+                    if bool(nouveau)
+                    else TypeChangement.DESACTIVATION
+                )
             CompteService._historiser(
                 compte=compte,
-                type_changement=CompteService.TYPE_AUDIT.get(attr, TypeChangement.AUTRE),
+                type_changement=audit_type,
                 ancien=CompteService._audit_value(ancien),
                 nouveau=CompteService._audit_value(nouveau),
                 commentaire=commentaire or f"Modification du champ {attr}",
