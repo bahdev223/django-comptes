@@ -19,6 +19,7 @@ from ..permissions import ComptesPermission
 from ..scoping import EntrepriseScopedViewSetMixin, scoping_enabled
 from ..selectors import ConfigurationFinanciereSelector, DashboardSelector
 from ..services import (
+    ClotureCompteService,
     CompteService,
     MouvementCompteService,
     RapprochementService,
@@ -27,6 +28,7 @@ from ..services import (
 from .serializers import (
     AjustementInputSerializer,
     ClotureCompteSerializer,
+    ClotureInputSerializer,
     CompteSerializer,
     DeviseSerializer,
     FinancialProviderSerializer,
@@ -359,3 +361,27 @@ class ClotureCompteViewSet(EntrepriseScopedViewSetMixin, viewsets.ReadOnlyModelV
     entreprise_scope_field = "compte__entreprise_id"
     serializer_class = ClotureCompteSerializer
     permission_classes = [ComptesPermission]
+    permission_actions = {"cloturer": "cloturer"}
+
+    @action(detail=False, methods=["post"])
+    def cloturer(self, request):
+        serializer = ClotureInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        comptes = Compte.objects.filter(actif=True)
+        if scoping_enabled():
+            comptes = comptes.filter(entreprise_id=self.get_entreprise_id())
+        compte = get_object_or_404(comptes, pk=data["compte_id"])
+
+        cloture = ClotureCompteService.cloturer(
+            compte=compte,
+            solde_reel=data.get("solde_reel"),
+            user=request.user,
+            commentaire=data.get("commentaire", ""),
+            date_cloture=data.get("date_cloture"),
+        )
+        return Response(
+            ClotureCompteSerializer(cloture).data,
+            status=status.HTTP_201_CREATED,
+        )

@@ -132,6 +132,7 @@ class FinancialOnboardingService:
             return None
         code = compte.provider.code if compte.provider else compte.code
         mode, _ = ModePaiement.objects.get_or_create(
+            entreprise_id=compte.entreprise_id,
             code=code,
             defaults={"libelle": compte.provider.name if compte.provider else compte.nom},
         )

@@ -260,3 +260,77 @@ class ProviderSeedHardeningTest(TestCase):
         providers = {p["code"]: p for p in PROVIDERS_MALI}
         self.assertFalse(providers["T_LIA"]["selectable"])
         self.assertFalse(providers["OPTIMA"]["selectable"])
+
+
+class PreHtmlReadinessTest(TestCase):
+    def test_onboarding_cree_mode_paiement_dans_le_bon_tenant(self):
+        provider = FinancialProvider.objects.create(
+            code="CASH_HTML_READY",
+            name="Espèces",
+            kind=ProviderKind.CASH,
+            country_code="ML",
+        )
+        from comptes.services import FinancialOnboardingService
+        from comptes.models import ModePaiement
+
+        FinancialOnboardingService.configurer_comptes(
+            provider_codes=[provider.code],
+            entreprise_id="TENANT-HTML",
+        )
+
+        mode = ModePaiement.objects.get(
+            entreprise_id="TENANT-HTML",
+            code=provider.code,
+        )
+        self.assertEqual(mode.entreprise_id, "TENANT-HTML")
+        self.assertEqual(mode.comptes.get().entreprise_id, "TENANT-HTML")
+
+    def test_urls_django_sont_importables_sans_wrapper_hote(self):
+        import importlib
+        module = importlib.import_module("comptes.urls")
+        self.assertTrue(module.urlpatterns)
+
+    @override_settings(COMPTES=TENANT_SETTINGS)
+    def test_api_cloture_refuse_compte_autre_tenant(self):
+        self.user = User.objects.create_user("closer", password="test")
+        self.user.entreprise_id = "A"
+        self.user.user_permissions.add(Permission.objects.get(codename="cloturer"))
+
+        compte_b = Compte.objects.create(
+            entreprise_id="B",
+            code="B-CLOTURE",
+            nom="Compte B",
+            solde_actuel=Decimal("1000.00"),
+        )
+        factory = APIRequestFactory()
+        request = factory.post(
+            "/clotures/cloturer/",
+            {"compte_id": compte_b.pk, "solde_reel": "1000.00"},
+            format="json",
+        )
+        force_authenticate(request, user=self.user)
+        response = ClotureCompteViewSet.as_view({"post": "cloturer"})(request)
+        self.assertEqual(response.status_code, 404)
+
+    @override_settings(COMPTES=TENANT_SETTINGS)
+    def test_api_cloture_compte_tenant_actif(self):
+        self.user = User.objects.create_user("closer-ok", password="test")
+        self.user.entreprise_id = "A"
+        self.user.user_permissions.add(Permission.objects.get(codename="cloturer"))
+
+        compte = Compte.objects.create(
+            entreprise_id="A",
+            code="A-CLOTURE",
+            nom="Compte A",
+            solde_actuel=Decimal("1000.00"),
+        )
+        factory = APIRequestFactory()
+        request = factory.post(
+            "/clotures/cloturer/",
+            {"compte_id": compte.pk, "solde_reel": "1000.00"},
+            format="json",
+        )
+        force_authenticate(request, user=self.user)
+        response = ClotureCompteViewSet.as_view({"post": "cloturer"})(request)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["compte"], compte.pk)

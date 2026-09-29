@@ -215,3 +215,12 @@ class ClotureCompteSerializer(serializers.ModelSerializer):
         model = ClotureCompte
         fields = "__all__"
         read_only_fields = [field.name for field in ClotureCompte._meta.fields]
+
+
+class ClotureInputSerializer(serializers.Serializer):
+    compte_id = serializers.IntegerField()
+    solde_reel = serializers.DecimalField(
+        max_digits=15, decimal_places=2, required=False, allow_null=True
+    )
+    commentaire = serializers.CharField(required=False, allow_blank=True, default="")
+    date_cloture = serializers.DateField(required=False)
