@@ -1,19 +1,24 @@
+from django.contrib.auth.decorators import login_required, permission_required
 from django.shortcuts import render
-from django.contrib.auth.decorators import login_required
 
 from ..models import Compte
+from ..scoping import scoping_enabled
 from ..selectors import DashboardSelector
+from .security import scoped_comptes, tenant_id
 
 
 @login_required
+@permission_required("comptes.view_compte", raise_exception=True)
 def dashboard(request):
-    selector = DashboardSelector()
-    comptes = selector._filter_queryset(Compte.objects.filter(actif=True).order_by("code"))
+    tenant_filter = (
+        {"entreprise_id": tenant_id(request)}
+        if scoping_enabled()
+        else {}
+    )
+    selector = DashboardSelector(tenant_filter=tenant_filter)
+    comptes = scoped_comptes(request, actif=True).order_by("code")
     synthese = selector.synthese_globale()
     flux = selector.flux_24h()
-    mouvements = selector.mouvements_recents(50)
-    transferts = selector.transferts_recents(20)
-    alertes = selector.alertes()
 
     context = {
         "comptes": comptes,
@@ -21,8 +26,8 @@ def dashboard(request):
         "flux_net": flux["flux_net"],
         "entrees_24h": flux["entrees"],
         "sorties_24h": flux["sorties"],
-        "mouvements": mouvements,
-        "transferts": transferts,
-        "alertes": alertes,
+        "mouvements": selector.mouvements_recents(50),
+        "transferts": selector.transferts_recents(20),
+        "alertes": selector.alertes(),
     }
     return render(request, "comptes/dashboard.html", context)

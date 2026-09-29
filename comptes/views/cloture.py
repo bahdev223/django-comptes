@@ -1,34 +1,41 @@
+from decimal import Decimal, InvalidOperation
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
-from django.shortcuts import render, redirect, get_object_or_404
+from django.shortcuts import redirect, render
 
-from ..models import Compte, JournalCompte
+from ..models import JournalCompte
 from ..services import ClotureCompteService
+from .security import get_scoped_compte_or_404
 
 
 @login_required
 @permission_required("comptes.cloturer", raise_exception=True)
 def cloturer_compte(request, compte_id):
-    compte = get_object_or_404(Compte, id=compte_id, actif=True)
+    compte = get_scoped_compte_or_404(request, pk=compte_id, actif=True)
 
     if request.method == "POST":
         try:
-            solde_reel = request.POST.get("solde_reel")
-            commentaire = request.POST.get("commentaire", "")
-            cloture = ClotureCompteService.cloturer(
+            raw = request.POST.get("solde_reel")
+            solde_reel = Decimal(raw) if raw not in (None, "") else None
+            ClotureCompteService.cloturer(
                 compte=compte,
                 solde_reel=solde_reel,
                 user=request.user,
-                commentaire=commentaire,
+                commentaire=request.POST.get("commentaire", ""),
             )
             messages.success(request, f"Clôture de {compte.nom} effectuée")
             return redirect("comptes:journal_consulter", compte_id=compte.id)
-        except Exception as e:
-            messages.error(request, str(e))
+        except InvalidOperation:
+            messages.error(request, "Solde réel invalide.")
+        except Exception as exc:
+            messages.error(request, str(exc))
 
-    journal_ouvert = JournalCompte.objects.filter(compte=compte, cloture=False).first()
-    context = {
-        "compte": compte,
-        "journal": journal_ouvert,
-    }
-    return render(request, "comptes/cloture.html", context)
+    journal_ouvert = JournalCompte.objects.filter(
+        compte=compte, cloture=False
+    ).first()
+    return render(
+        request,
+        "comptes/cloture.html",
+        {"compte": compte, "journal": journal_ouvert},
+    )
