@@ -154,7 +154,9 @@ class HtmlTenantSecurityTest(TestCase):
                 "montant": "1000",
             },
         )
-        response = transfert_views.transfert_effectuer(request)
+        with patch("comptes.views.transferts.render") as mocked:
+            mocked.return_value.status_code = 200
+            response = transfert_views.transfert_effectuer(request)
         self.assertEqual(response.status_code, 200)
         self.compte_a.refresh_from_db()
         self.compte_b.refresh_from_db()
