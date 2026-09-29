@@ -1,0 +1,18 @@
+<div x-show="modalCloture" x-cloak class="fixed inset-0 z-50 overflow-y-auto">
+    <div class="flex min-h-full items-center justify-center p-4">
+        <button type="button" class="fixed inset-0 bg-slate-950/40 backdrop-blur-sm" @click="modalCloture=false"></button>
+        <div class="relative w-full max-w-md rounded-2xl bg-white shadow-2xl">
+            <div class="border-b border-slate-200 px-6 py-4">
+                <h2 class="font-semibold text-slate-900">Clôturer {{ compte.nom }}</h2>
+                <p class="text-xs text-slate-500">Confirmez le solde réellement constaté.</p>
+            </div>
+            <form method="post" action="{% url 'comptes:cloturer_compte' compte.id %}" class="space-y-4 p-6">
+                {% csrf_token %}
+                <div class="rounded-xl bg-slate-50 p-4"><p class="text-xs text-slate-500">Solde théorique actuel</p><p class="mt-1 text-xl font-semibold text-slate-900">{{ compte.solde_actuel|floatformat:0 }} {{ compte.devise_id }}</p></div>
+                <div><label class="mb-1 block text-sm font-medium text-slate-700">Solde réel constaté</label><input type="number" step="0.01" name="solde_reel" value="{{ compte.solde_actuel }}" required class="w-full rounded-xl border border-slate-300 px-3 py-2.5"></div>
+                <div><label class="mb-1 block text-sm font-medium text-slate-700">Commentaire</label><textarea name="commentaire" rows="3" class="w-full rounded-xl border border-slate-300 px-3 py-2.5" placeholder="Justification d'un éventuel écart"></textarea></div>
+                <div class="flex justify-end gap-3 border-t border-slate-100 pt-4"><button type="button" @click="modalCloture=false" class="rounded-xl px-4 py-2.5 text-sm font-medium text-slate-600">Annuler</button><button type="submit" class="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-medium text-white">Clôturer</button></div>
+            </form>
+        </div>
+    </div>
+</div>

@@ -13,6 +13,7 @@ from .mouvements import (
 from .transferts import transfert_effectuer, liste_transferts
 from .journal import journal_consulter
 from .cloture import cloturer_compte
+from .onboarding import onboarding_financier
 from .rapprochement import (
     rapprochement_liste,
     rapprochement_detail,

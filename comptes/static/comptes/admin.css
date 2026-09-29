@@ -1,0 +1,107 @@
+:root {
+  --finance-ink: #0f172a;
+  --finance-muted: #64748b;
+  --finance-border: #e2e8f0;
+  --finance-soft: #f8fafc;
+}
+
+#header {
+  background: var(--finance-ink);
+  color: #fff;
+  box-shadow: none;
+}
+
+#branding h1,
+#branding h1 a:link,
+#branding h1 a:visited {
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+div.breadcrumbs {
+  background: #1e293b;
+  color: #cbd5e1;
+}
+
+.module,
+.inline-group,
+#changelist-filter,
+.submit-row {
+  border: 1px solid var(--finance-border);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: none;
+}
+
+.module h2,
+.module caption,
+.inline-group h2 {
+  background: var(--finance-soft);
+  color: var(--finance-ink);
+  font-weight: 700;
+}
+
+#changelist .results {
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+#changelist table thead th {
+  background: #f8fafc;
+  color: #475569;
+}
+
+#changelist table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.button,
+input[type=submit],
+input[type=button],
+.submit-row input,
+a.button {
+  border-radius: 10px;
+  background: var(--finance-ink);
+  border-color: var(--finance-ink);
+  box-shadow: none;
+}
+
+.button.default,
+input[type=submit].default {
+  background: #0f172a;
+}
+
+.object-tools a:link,
+.object-tools a:visited {
+  border-radius: 10px;
+  background: #0f172a;
+}
+
+.form-row input,
+.form-row select,
+.form-row textarea,
+.vTextField {
+  border-radius: 10px;
+  border-color: #cbd5e1;
+}
+
+.selector .selector-available h2,
+.selector .selector-chosen h2 {
+  border-radius: 10px 10px 0 0;
+}
+
+#content h1 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--finance-ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --finance-ink: #e2e8f0;
+    --finance-muted: #94a3b8;
+    --finance-border: #334155;
+    --finance-soft: #0f172a;
+  }
+}

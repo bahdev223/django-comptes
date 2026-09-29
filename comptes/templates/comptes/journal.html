@@ -1,77 +1,26 @@
 {% extends 'comptes/base_comptes.html' %}
-
+{% block page_title %}Journal financier{% endblock %}
+{% block page_subtitle %}{% if compte %}{{ compte.nom }} · {{ date_journal|date:"d/m/Y" }}{% else %}Sélectionnez un compte{% endif %}{% endblock %}
 {% block compte_content %}
-<div class="max-w-7xl mx-auto px-4 py-6 space-y-6">
-    <h1 class="text-2xl font-bold text-gray-900">Journal {{ compte.nom|default:'—' }} — {{ date_journal|date:'d/m/Y' }}</h1>
-
+<div class="space-y-6">
     {% if compte %}
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div class="p-4 bg-white rounded-xl shadow-sm border border-gray-200">
-            <p class="text-xs text-gray-500">Solde ouverture</p>
-            <p class="text-lg font-bold">{{ journal.solde_ouverture|floatformat:0 }}</p>
-        </div>
-        <div class="p-4 bg-green-50 rounded-xl shadow-sm border border-green-200">
-            <p class="text-xs text-green-600">Total entrées</p>
-            <p class="text-lg font-bold text-green-700">{{ journal.total_entrees|floatformat:0 }}</p>
-        </div>
-        <div class="p-4 bg-red-50 rounded-xl shadow-sm border border-red-200">
-            <p class="text-xs text-red-600">Total sorties</p>
-            <p class="text-lg font-bold text-red-700">{{ journal.total_sorties|floatformat:0 }}</p>
-        </div>
-        <div class="p-4 bg-white rounded-xl shadow-sm border border-gray-200">
-            <p class="text-xs text-gray-500">Solde théorique</p>
-            <p class="text-lg font-bold">{{ journal.solde_theorique|floatformat:0 }}</p>
-        </div>
-        <div class="p-4 bg-amber-50 rounded-xl shadow-sm border border-amber-200">
-            <p class="text-xs text-amber-600">Écart</p>
-            <p class="text-lg font-bold {% if journal.ecart == 0 %}text-green-600{% else %}text-red-600{% endif %}">
-                {{ journal.ecart|floatformat:0 }}
-            </p>
-        </div>
+    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <div class="rounded-2xl border border-slate-200 bg-white p-5"><p class="text-xs uppercase tracking-wide text-slate-400">Ouverture</p><p class="mt-2 text-xl font-semibold text-slate-900">{{ journal.solde_ouverture|floatformat:0 }}</p></div>
+        <div class="rounded-2xl border border-slate-200 bg-white p-5"><p class="text-xs uppercase tracking-wide text-slate-400">Entrées</p><p class="mt-2 text-xl font-semibold text-emerald-700">{{ journal.total_entrees|floatformat:0 }}</p></div>
+        <div class="rounded-2xl border border-slate-200 bg-white p-5"><p class="text-xs uppercase tracking-wide text-slate-400">Sorties</p><p class="mt-2 text-xl font-semibold text-rose-700">{{ journal.total_sorties|floatformat:0 }}</p></div>
+        <div class="rounded-2xl border border-slate-200 bg-white p-5"><p class="text-xs uppercase tracking-wide text-slate-400">Théorique</p><p class="mt-2 text-xl font-semibold text-slate-900">{{ journal.solde_theorique|floatformat:0 }}</p></div>
+        <div class="rounded-2xl border border-slate-200 bg-white p-5"><p class="text-xs uppercase tracking-wide text-slate-400">Écart</p><p class="mt-2 text-xl font-semibold {% if journal.ecart == 0 %}text-emerald-700{% else %}text-rose-700{% endif %}">{{ journal.ecart|floatformat:0 }}</p></div>
     </div>
 
-    {% if journal.cloture %}
-    <div class="px-4 py-3 bg-green-50 text-green-600 rounded-lg text-sm border border-green-200">
-        Ce journal est clôturé.
-    </div>
-    {% endif %}
-
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <table class="w-full text-sm">
-            <thead class="bg-gray-50">
-                <tr class="text-gray-500">
-                    <th class="px-5 py-3 text-left">Type</th>
-                    <th class="px-5 py-3 text-left">Libellé</th>
-                    <th class="px-5 py-3 text-right">Montant</th>
-                    <th class="px-5 py-3 text-center">Sens</th>
-                    <th class="px-5 py-3 text-left">Référence</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-200">
-                {% for ligne in lignes %}
-                <tr class="hover:bg-gray-50">
-                    <td class="px-5 py-3">{{ ligne.type_operation|truncatechars:30 }}</td>
-                    <td class="px-5 py-3">{{ ligne.libelle|truncatechars:40 }}</td>
-                    <td class="px-5 py-3 text-right font-bold">{{ ligne.montant|floatformat:0 }}</td>
-                    <td class="px-5 py-3 text-center">
-                        {% if ligne.sens == 'ENTREE' %}
-                        <span class="text-green-600">Entrée</span>
-                        {% else %}
-                        <span class="text-red-600">Sortie</span>
-                        {% endif %}
-                    </td>
-                    <td class="px-5 py-3 text-xs font-mono">{{ ligne.reference|default:'—' }}</td>
-                </tr>
-                {% empty %}
-                <tr><td colspan="5" class="px-5 py-8 text-center text-gray-500">Aucune ligne</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div class="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+        <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+            <div><h2 class="font-semibold text-slate-900">Opérations du jour</h2><p class="text-xs text-slate-500">{% if journal.cloture %}Journal clôturé{% else %}Journal ouvert{% endif %}</p></div>
+            {% if perms.comptes.cloturer and not journal.cloture %}<a href="{% url 'comptes:cloturer_compte' compte.id %}" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">Clôturer</a>{% endif %}
+        </div>
+        <div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-slate-50 text-slate-500"><tr><th class="px-5 py-3 text-left font-medium">Type</th><th class="px-5 py-3 text-left font-medium">Libellé</th><th class="px-5 py-3 text-right font-medium">Montant</th><th class="px-5 py-3 text-center font-medium">Sens</th><th class="px-5 py-3 text-left font-medium">Référence</th></tr></thead><tbody class="divide-y divide-slate-100">{% for ligne in lignes %}<tr><td class="px-5 py-4">{{ ligne.nature|default:ligne.type_operation }}</td><td class="px-5 py-4 text-slate-700">{{ ligne.libelle }}</td><td class="px-5 py-4 text-right font-semibold">{{ ligne.montant|floatformat:0 }}</td><td class="px-5 py-4 text-center"><span class="{% if ligne.sens == 'ENTREE' %}text-emerald-700{% else %}text-rose-700{% endif %}">{{ ligne.sens|title }}</span></td><td class="px-5 py-4 font-mono text-xs text-slate-400">{{ ligne.reference|default:"—" }}</td></tr>{% empty %}<tr><td colspan="5" class="px-5 py-10 text-center text-slate-500">Aucune opération pour cette journée.</td></tr>{% endfor %}</tbody></table></div>
     </div>
     {% else %}
-    <div class="bg-white rounded-xl p-8 text-center text-gray-500">
-        Sélectionnez un compte et une date pour consulter son journal.
-    </div>
+    <div class="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center"><span class="material-symbols-outlined text-4xl text-slate-300">menu_book</span><p class="mt-3 text-sm font-medium text-slate-700">Aucun compte sélectionné</p><p class="mt-1 text-sm text-slate-500">Ouvrez la fiche d'un compte puis consultez son journal.</p></div>
     {% endif %}
 </div>
 {% endblock %}

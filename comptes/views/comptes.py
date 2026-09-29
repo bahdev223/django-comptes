@@ -23,7 +23,11 @@ def liste_comptes(request):
     return render(
         request,
         "comptes/liste_comptes.html",
-        {"comptes": comptes, "synthese": synthese},
+        {
+            "comptes": comptes,
+            "synthese": synthese,
+            "devises": Devise.objects.filter(actif=True).order_by("code"),
+        },
     )
 
 

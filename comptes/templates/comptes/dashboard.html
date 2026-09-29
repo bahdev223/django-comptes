@@ -1,80 +1,107 @@
 {% extends 'comptes/base_comptes.html' %}
 
+{% block page_title %}Vue d'ensemble{% endblock %}
+{% block page_subtitle %}Trésorerie, flux et comptes actifs{% endblock %}
+{% block page_actions %}
+    {% if perms.comptes.add_compte %}
+    <button type="button" @click="modalCompte=true" class="hidden sm:inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
+        <span class="material-symbols-outlined text-[18px]">add</span>Compte
+    </button>
+    {% endif %}
+    {% if perms.comptes.transferer %}
+    <button type="button" @click="modalTransfert=true" class="hidden sm:inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+        <span class="material-symbols-outlined text-[18px]">swap_horiz</span>Transfert
+    </button>
+    {% endif %}
+{% endblock %}
+
 {% block compte_content %}
-<div class="max-w-7xl mx-auto px-4 py-6 space-y-6">
-    <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-            <h1 class="text-2xl font-bold text-gray-900">Comptes financiers</h1>
-            <p class="text-sm text-gray-500">Vue d'ensemble de la trésorerie de l'entreprise active.</p>
-        </div>
-        <div class="flex flex-wrap gap-2">
-            {% if perms.comptes.add_compte %}
-            <a href="{% url 'comptes:ajouter_compte' %}" class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
-                <span class="material-symbols-outlined mr-1">add</span>Nouveau compte
-            </a>
-            {% endif %}
-            {% if perms.comptes.transferer %}
-            <a href="{% url 'comptes:transfert_effectuer' %}" class="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
-                <span class="material-symbols-outlined mr-1">swap_horiz</span>Transfert
-            </a>
-            {% endif %}
-        </div>
-    </div>
+<div x-data="{modalCompte:false, modalTransfert:false}" class="space-y-6">
+    <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <article class="rounded-2xl border border-slate-200 bg-white p-5">
+            <div class="flex items-start justify-between">
+                <div><p class="text-xs font-medium uppercase tracking-wide text-slate-400">Solde disponible</p>
+                    {% if synthese.solde_total is not None %}
+                    <p class="mt-2 text-2xl font-semibold text-slate-900">{{ synthese.solde_total|floatformat:0 }} <span class="text-sm font-medium text-slate-400">XOF</span></p>
+                    {% else %}<p class="mt-2 text-base font-semibold text-slate-700">Multi-devise</p>{% endif %}
+                </div>
+                <div class="rounded-xl bg-slate-100 p-2.5 text-slate-600"><span class="material-symbols-outlined">account_balance_wallet</span></div>
+            </div>
+        </article>
+        <article class="rounded-2xl border border-slate-200 bg-white p-5">
+            <div class="flex items-start justify-between">
+                <div><p class="text-xs font-medium uppercase tracking-wide text-slate-400">Entrées 24h</p><p class="mt-2 text-2xl font-semibold text-emerald-700">{{ entrees_24h|floatformat:0 }}</p></div>
+                <div class="rounded-xl bg-emerald-50 p-2.5 text-emerald-700"><span class="material-symbols-outlined">south_west</span></div>
+            </div>
+        </article>
+        <article class="rounded-2xl border border-slate-200 bg-white p-5">
+            <div class="flex items-start justify-between">
+                <div><p class="text-xs font-medium uppercase tracking-wide text-slate-400">Sorties 24h</p><p class="mt-2 text-2xl font-semibold text-rose-700">{{ sorties_24h|floatformat:0 }}</p></div>
+                <div class="rounded-xl bg-rose-50 p-2.5 text-rose-700"><span class="material-symbols-outlined">north_east</span></div>
+            </div>
+        </article>
+        <article class="rounded-2xl border border-slate-200 bg-white p-5">
+            <div class="flex items-start justify-between">
+                <div><p class="text-xs font-medium uppercase tracking-wide text-slate-400">Flux net</p><p class="mt-2 text-2xl font-semibold {% if flux_net >= 0 %}text-emerald-700{% else %}text-rose-700{% endif %}">{{ flux_net|floatformat:0 }}</p></div>
+                <div class="rounded-xl bg-blue-50 p-2.5 text-blue-700"><span class="material-symbols-outlined">monitoring</span></div>
+            </div>
+        </article>
+    </section>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="p-5 bg-white rounded-xl shadow-sm border border-gray-200">
-            <p class="text-xs text-gray-500 uppercase tracking-wide">Solde total</p>
-            {% if synthese.solde_total is not None %}
-            <p class="text-2xl font-bold text-amber-600 mt-1">{{ synthese.solde_total|floatformat:0 }}</p>
-            {% else %}
-            <p class="text-sm font-medium text-gray-500 mt-2">Plusieurs devises</p>
-            {% endif %}
-        </div>
-        <div class="p-5 bg-white rounded-xl shadow-sm border border-gray-200">
-            <p class="text-xs text-gray-500 uppercase tracking-wide">Flux net 24h</p>
-            <p class="text-2xl font-bold mt-1 {% if flux_net >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ flux_net|floatformat:0 }}</p>
-        </div>
-        <div class="p-5 bg-white rounded-xl shadow-sm border border-gray-200">
-            <p class="text-xs text-gray-500 uppercase tracking-wide">Comptes actifs</p>
-            <p class="text-2xl font-bold text-gray-900 mt-1">{{ synthese.nb_comptes_actifs }}</p>
-        </div>
-        <div class="p-5 bg-white rounded-xl shadow-sm border border-gray-200">
-            <p class="text-xs text-gray-500 uppercase tracking-wide">Alertes découvert</p>
-            <p class="text-2xl font-bold mt-1 {% if synthese.alertes_decouvert %}text-red-600{% else %}text-green-600{% endif %}">{{ synthese.alertes_decouvert }}</p>
-        </div>
-    </div>
+    {% if alertes %}
+    <section class="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+        <div class="flex items-center gap-2 text-sm font-medium text-amber-900"><span class="material-symbols-outlined text-[20px]">warning</span>{{ alertes|length }} alerte{{ alertes|length|pluralize }} de trésorerie</div>
+    </section>
+    {% endif %}
 
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 class="text-lg font-bold text-gray-900">Comptes</h2>
-            <a href="{% url 'comptes:liste_comptes' %}" class="text-sm text-blue-600 hover:text-blue-800">Voir tout</a>
+    <section class="grid gap-6 xl:grid-cols-[1.45fr_.75fr]">
+        <div class="rounded-2xl border border-slate-200 bg-white">
+            <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                <div><h2 class="font-semibold text-slate-900">Comptes actifs</h2><p class="text-xs text-slate-500">{{ synthese.nb_comptes_actifs }} compte{{ synthese.nb_comptes_actifs|pluralize }}</p></div>
+                <a href="{% url 'comptes:liste_comptes' %}" class="text-sm font-medium text-slate-600 hover:text-slate-900">Gérer</a>
+            </div>
+            <div class="divide-y divide-slate-100">
+                {% for c in comptes %}
+                <a href="{% url 'comptes:detail_compte' c.id %}" class="flex items-center justify-between gap-4 px-5 py-4 hover:bg-slate-50">
+                    <div class="flex min-w-0 items-center gap-3">
+                        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                            <span class="material-symbols-outlined">{% if c.type == 'BANQUE' %}account_balance{% elif c.type == 'MOBILE_MONEY' %}smartphone{% elif c.type == 'ESPECES' %}payments{% else %}wallet{% endif %}</span>
+                        </div>
+                        <div class="min-w-0"><p class="truncate text-sm font-medium text-slate-900">{{ c.nom }}</p><p class="truncate text-xs text-slate-500">{{ c.provider.name|default:c.get_type_display }} · {{ c.code }}</p></div>
+                    </div>
+                    <div class="text-right"><p class="text-sm font-semibold {% if c.solde_actuel >= 0 %}text-slate-900{% else %}text-rose-700{% endif %}">{{ c.solde_actuel|floatformat:0 }}</p><p class="text-xs text-slate-400">{{ c.devise_id }}</p></div>
+                </a>
+                {% empty %}
+                <div class="px-5 py-10 text-center">
+                    <p class="text-sm font-medium text-slate-700">Aucun compte configuré</p>
+                    {% if perms.comptes.add_compte %}<a href="{% url 'comptes:onboarding' %}" class="mt-2 inline-block text-sm text-blue-600">Démarrer l'onboarding financier</a>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
         </div>
-        <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-            <thead class="bg-gray-50"><tr class="text-gray-500">
-                <th class="px-5 py-3 text-left">Code</th>
-                <th class="px-5 py-3 text-left">Nom</th>
-                <th class="px-5 py-3 text-left">Type</th>
-                <th class="px-5 py-3 text-right">Solde</th>
-                <th class="px-5 py-3 text-center">Actions</th>
-            </tr></thead>
-            <tbody class="divide-y divide-gray-200">
-            {% for c in comptes %}
-            <tr>
-                <td class="px-5 py-3 font-mono text-xs">{{ c.code }}</td>
-                <td class="px-5 py-3 font-medium">{{ c.nom }}</td>
-                <td class="px-5 py-3">{{ c.get_type_display }}</td>
-                <td class="px-5 py-3 text-right font-bold {% if c.solde_actuel >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ c.solde_actuel|floatformat:0 }} {{ c.devise_id }}</td>
-                <td class="px-5 py-3 text-center">
-                    <a href="{% url 'comptes:detail_compte' c.id %}" class="text-blue-600 hover:text-blue-800">Détail</a>
-                </td>
-            </tr>
-            {% empty %}
-            <tr><td colspan="5" class="px-5 py-8 text-center text-gray-500">Aucun compte configuré.</td></tr>
-            {% endfor %}
-            </tbody>
-        </table>
+
+        <div class="rounded-2xl border border-slate-200 bg-white">
+            <div class="border-b border-slate-100 px-5 py-4"><h2 class="font-semibold text-slate-900">Mouvements récents</h2></div>
+            <div class="divide-y divide-slate-100">
+                {% for m in mouvements %}
+                <div class="flex items-center justify-between gap-3 px-5 py-3.5">
+                    <div class="min-w-0"><p class="truncate text-sm font-medium text-slate-800">{{ m.libelle }}</p><p class="text-xs text-slate-400">{{ m.compte.nom }} · {{ m.date|date:"d/m H:i" }}</p></div>
+                    <span class="shrink-0 text-sm font-semibold {% if m.est_entree %}text-emerald-700{% else %}text-rose-700{% endif %}">{% if m.est_entree %}+{% else %}-{% endif %}{{ m.montant|floatformat:0 }}</span>
+                </div>
+                {% empty %}<div class="px-5 py-10 text-center text-sm text-slate-500">Aucun mouvement récent.</div>{% endfor %}
+            </div>
+            {% if perms.comptes.view_mouvementcompte %}<div class="border-t border-slate-100 px-5 py-3"><a href="{% url 'comptes:liste_mouvements' %}" class="text-sm font-medium text-slate-600 hover:text-slate-900">Voir le journal complet</a></div>{% endif %}
         </div>
-    </div>
+    </section>
+
+    <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {% if perms.comptes.add_compte %}<a href="{% url 'comptes:onboarding' %}" class="rounded-2xl border border-slate-200 bg-white p-5 hover:border-slate-400"><span class="material-symbols-outlined text-slate-500">tune</span><p class="mt-3 text-sm font-semibold text-slate-900">Configurer les moyens</p><p class="mt-1 text-xs text-slate-500">Caisse, Mobile Money et banques.</p></a>{% endif %}
+        {% if perms.comptes.transferer %}<button type="button" @click="modalTransfert=true" class="text-left rounded-2xl border border-slate-200 bg-white p-5 hover:border-slate-400"><span class="material-symbols-outlined text-slate-500">swap_horiz</span><p class="mt-3 text-sm font-semibold text-slate-900">Faire un transfert</p><p class="mt-1 text-xs text-slate-500">Déplacer des fonds entre comptes.</p></button>{% endif %}
+        {% if perms.comptes.view_rapprochementbancaire %}<a href="{% url 'comptes:rapprochement_liste' %}" class="rounded-2xl border border-slate-200 bg-white p-5 hover:border-slate-400"><span class="material-symbols-outlined text-slate-500">rule</span><p class="mt-3 text-sm font-semibold text-slate-900">Rapprocher</p><p class="mt-1 text-xs text-slate-500">Pointer relevés et écritures.</p></a>{% endif %}
+        {% if perms.comptes.view_transfertcompte %}<a href="{% url 'comptes:liste_transferts' %}" class="rounded-2xl border border-slate-200 bg-white p-5 hover:border-slate-400"><span class="material-symbols-outlined text-slate-500">history</span><p class="mt-3 text-sm font-semibold text-slate-900">Historique transferts</p><p class="mt-1 text-xs text-slate-500">Consulter les opérations passées.</p></a>{% endif %}
+    </section>
+
+    {% if perms.comptes.add_compte %}{% include 'comptes/_modal_compte.html' %}{% endif %}
+    {% if perms.comptes.transferer %}{% include 'comptes/_modal_transfert.html' %}{% endif %}
 </div>
 {% endblock %}

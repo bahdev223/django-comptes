@@ -1,43 +1,43 @@
 {% extends 'comptes/base_comptes.html' %}
 
+{% block page_title %}Comptes{% endblock %}
+{% block page_subtitle %}Caisse, banques, Mobile Money et autres supports{% endblock %}
+{% block page_actions %}
+{% if perms.comptes.add_compte %}
+<button type="button" @click="$dispatch('open-account-modal')" class="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
+    <span class="material-symbols-outlined text-[18px]">add</span>Nouveau compte
+</button>
+{% endif %}
+{% endblock %}
+
 {% block compte_content %}
-<div class="max-w-7xl mx-auto px-4 py-6 space-y-6">
-    <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-2xl font-bold text-gray-900">Comptes financiers</h1>
-            <p class="text-sm text-gray-500">{{ synthese.nb_comptes_actifs }} compte{{ synthese.nb_comptes_actifs|pluralize }} actif{{ synthese.nb_comptes_actifs|pluralize }}</p>
+<div x-data="{modalCompte:false}" @open-account-modal.window="modalCompte=true" class="space-y-6">
+    <div class="grid gap-4 sm:grid-cols-3">
+        <div class="rounded-2xl border border-slate-200 bg-white p-5"><p class="text-xs uppercase tracking-wide text-slate-400">Comptes actifs</p><p class="mt-2 text-2xl font-semibold text-slate-900">{{ synthese.nb_comptes_actifs }}</p></div>
+        <div class="rounded-2xl border border-slate-200 bg-white p-5"><p class="text-xs uppercase tracking-wide text-slate-400">Découverts</p><p class="mt-2 text-2xl font-semibold {% if synthese.alertes_decouvert %}text-rose-700{% else %}text-emerald-700{% endif %}">{{ synthese.alertes_decouvert }}</p></div>
+        <div class="rounded-2xl border border-slate-200 bg-white p-5"><p class="text-xs uppercase tracking-wide text-slate-400">Configuration</p>{% if perms.comptes.add_compte %}<a href="{% url 'comptes:onboarding' %}" class="mt-2 inline-flex items-center gap-1 text-sm font-medium text-blue-600">Onboarding financier <span class="material-symbols-outlined text-[16px]">arrow_forward</span></a>{% else %}<p class="mt-2 text-sm text-slate-500">Lecture seule</p>{% endif %}</div>
+    </div>
+
+    <div class="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+        <div class="border-b border-slate-100 px-5 py-4"><h2 class="font-semibold text-slate-900">Tous les comptes</h2></div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-slate-50 text-slate-500"><tr><th class="px-5 py-3 text-left font-medium">Compte</th><th class="px-5 py-3 text-left font-medium">Type</th><th class="px-5 py-3 text-left font-medium">Prestataire</th><th class="px-5 py-3 text-right font-medium">Solde</th><th class="px-5 py-3 text-center font-medium">Statut</th><th class="px-5 py-3"></th></tr></thead>
+                <tbody class="divide-y divide-slate-100">
+                    {% for c in comptes %}
+                    <tr class="hover:bg-slate-50">
+                        <td class="px-5 py-4"><div class="font-medium text-slate-900">{{ c.nom }}</div><div class="text-xs text-slate-400">{{ c.code }}{% if c.identifiant %} · {{ c.identifiant }}{% endif %}</div></td>
+                        <td class="px-5 py-4 text-slate-600">{{ c.get_type_display }}</td>
+                        <td class="px-5 py-4 text-slate-600">{{ c.provider.name|default:"—" }}</td>
+                        <td class="px-5 py-4 text-right font-semibold text-slate-900">{{ c.solde_actuel|floatformat:0 }} <span class="text-xs font-normal text-slate-400">{{ c.devise_id }}</span></td>
+                        <td class="px-5 py-4 text-center">{% if c.actif %}<span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">Actif</span>{% else %}<span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">Inactif</span>{% endif %}</td>
+                        <td class="px-5 py-4 text-right"><a href="{% url 'comptes:detail_compte' c.id %}" class="text-sm font-medium text-slate-600 hover:text-slate-900">Ouvrir</a></td>
+                    </tr>
+                    {% empty %}<tr><td colspan="6" class="px-5 py-12 text-center"><p class="text-sm font-medium text-slate-700">Aucun compte financier</p>{% if perms.comptes.add_compte %}<a href="{% url 'comptes:onboarding' %}" class="mt-2 inline-block text-sm text-blue-600">Configurer maintenant</a>{% endif %}</td></tr>{% endfor %}
+                </tbody>
+            </table>
         </div>
-        {% if perms.comptes.add_compte %}
-        <a href="{% url 'comptes:ajouter_compte' %}" class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
-            <span class="material-symbols-outlined mr-1">add</span>Nouveau compte
-        </a>
-        {% endif %}
     </div>
-    <div class="bg-white rounded-xl border border-gray-200 overflow-x-auto">
-        <table class="w-full text-sm">
-            <thead class="bg-gray-50"><tr class="text-gray-500">
-                <th class="px-5 py-3 text-left">Code</th><th class="px-5 py-3 text-left">Nom</th>
-                <th class="px-5 py-3 text-left">Type</th><th class="px-5 py-3 text-left">Prestataire</th>
-                <th class="px-5 py-3 text-right">Solde</th><th class="px-5 py-3 text-center">Statut</th>
-                <th class="px-5 py-3 text-center">Actions</th>
-            </tr></thead>
-            <tbody class="divide-y divide-gray-200">
-            {% for c in comptes %}
-            <tr>
-                <td class="px-5 py-3 font-mono text-xs">{{ c.code }}</td>
-                <td class="px-5 py-3 font-medium">{{ c.nom }}</td>
-                <td class="px-5 py-3">{{ c.get_type_display }}</td>
-                <td class="px-5 py-3">{{ c.provider.name|default:"—" }}</td>
-                <td class="px-5 py-3 text-right font-bold">{{ c.solde_actuel|floatformat:0 }} {{ c.devise_id }}</td>
-                <td class="px-5 py-3 text-center">{% if c.actif %}<span class="text-green-600">Actif</span>{% else %}<span class="text-red-600">Inactif</span>{% endif %}</td>
-                <td class="px-5 py-3 text-center space-x-2">
-                    <a href="{% url 'comptes:detail_compte' c.id %}" class="text-blue-600">Détail</a>
-                    {% if perms.comptes.change_compte %}<a href="{% url 'comptes:modifier_compte' c.id %}" class="text-amber-600">Modifier</a>{% endif %}
-                </td>
-            </tr>
-            {% empty %}<tr><td colspan="7" class="px-5 py-8 text-center text-gray-500">Aucun compte.</td></tr>{% endfor %}
-            </tbody>
-        </table>
-    </div>
+    {% if perms.comptes.add_compte %}{% include 'comptes/_modal_compte.html' %}{% endif %}
 </div>
 {% endblock %}

@@ -1,26 +1,97 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}Comptes Financiers - {% block compte_title %}Dashboard{% endblock %}{% endblock %}
+{% block title %}{% block compte_title %}Finance{% endblock %} · Comptes{% endblock %}
 
 {% block content %}
-<div class="space-y-6" x-data="comptesApp()">
-    {% if messages %}
-    <div class="space-y-2">
-        {% for message in messages %}
-        <div class="flex items-center gap-3 px-4 py-3 rounded-lg shadow-sm
-            {% if message.tags == 'success' %}bg-green-50 text-green-600 border border-green-200
-            {% elif message.tags == 'error' %}bg-red-50 text-red-600 border border-red-200
-            {% else %}bg-blue-50 text-blue-600 border border-blue-200{% endif %}">
-            <span class="material-symbols-outlined">
-                {% if message.tags == 'success' %}check_circle{% elif message.tags == 'error' %}error{% else %}info{% endif %}
-            </span>
-            <span class="text-sm">{{ message }}</span>
-        </div>
-        {% endfor %}
-    </div>
-    {% endif %}
+<div x-data="{sidebar:false}" class="min-h-[calc(100vh-4rem)] bg-slate-50">
+    <div class="mx-auto max-w-[1600px] lg:flex">
+        <aside class="hidden lg:flex lg:w-64 lg:flex-col lg:border-r lg:border-slate-200 lg:bg-white">
+            <div class="px-5 py-6">
+                <div class="flex items-center gap-3">
+                    <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white">
+                        <span class="material-symbols-outlined">account_balance_wallet</span>
+                    </div>
+                    <div>
+                        <p class="text-sm font-semibold text-slate-900">Finance</p>
+                        <p class="text-xs text-slate-500">Comptes & trésorerie</p>
+                    </div>
+                </div>
+            </div>
+            <nav class="flex-1 space-y-1 px-3 pb-6 text-sm">
+                <a href="{% url 'comptes:dashboard' %}" class="flex items-center gap-3 rounded-lg px-3 py-2.5 {% if request.resolver_match.url_name == 'dashboard' %}bg-slate-900 text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
+                    <span class="material-symbols-outlined text-[20px]">dashboard</span>Vue d'ensemble
+                </a>
+                <a href="{% url 'comptes:liste_comptes' %}" class="flex items-center gap-3 rounded-lg px-3 py-2.5 {% if 'compte' in request.resolver_match.url_name %}bg-slate-900 text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
+                    <span class="material-symbols-outlined text-[20px]">wallet</span>Comptes
+                </a>
+                {% if perms.comptes.view_mouvementcompte %}
+                <a href="{% url 'comptes:liste_mouvements' %}" class="flex items-center gap-3 rounded-lg px-3 py-2.5 {% if 'mouvement' in request.resolver_match.url_name %}bg-slate-900 text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
+                    <span class="material-symbols-outlined text-[20px]">receipt_long</span>Mouvements
+                </a>
+                {% endif %}
+                {% if perms.comptes.view_transfertcompte %}
+                <a href="{% url 'comptes:liste_transferts' %}" class="flex items-center gap-3 rounded-lg px-3 py-2.5 {% if 'transfert' in request.resolver_match.url_name %}bg-slate-900 text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
+                    <span class="material-symbols-outlined text-[20px]">swap_horiz</span>Transferts
+                </a>
+                {% endif %}
+                {% if perms.comptes.view_rapprochementbancaire %}
+                <a href="{% url 'comptes:rapprochement_liste' %}" class="flex items-center gap-3 rounded-lg px-3 py-2.5 {% if 'rapprochement' in request.resolver_match.url_name %}bg-slate-900 text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
+                    <span class="material-symbols-outlined text-[20px]">rule</span>Rapprochements
+                </a>
+                {% endif %}
+                {% if perms.comptes.add_compte %}
+                <div class="pt-4">
+                    <p class="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Configuration</p>
+                    <a href="{% url 'comptes:onboarding' %}" class="flex items-center gap-3 rounded-lg px-3 py-2.5 {% if request.resolver_match.url_name == 'onboarding' %}bg-slate-900 text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
+                        <span class="material-symbols-outlined text-[20px]">tune</span>Onboarding financier
+                    </a>
+                </div>
+                {% endif %}
+            </nav>
+        </aside>
 
-    {% block compte_content %}{% endblock %}
+        <div class="min-w-0 flex-1">
+            <div class="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+                <div class="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
+                    <div class="flex items-center gap-3">
+                        <button type="button" class="lg:hidden" @click="sidebar=!sidebar">
+                            <span class="material-symbols-outlined">menu</span>
+                        </button>
+                        <div>
+                            <p class="text-sm font-semibold text-slate-900">{% block page_title %}Finance{% endblock %}</p>
+                            <p class="hidden text-xs text-slate-500 sm:block">{% block page_subtitle %}Gestion financière{% endblock %}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        {% block page_actions %}{% endblock %}
+                    </div>
+                </div>
+            </div>
+
+            <div x-show="sidebar" x-cloak class="border-b border-slate-200 bg-white lg:hidden">
+                <nav class="grid grid-cols-2 gap-2 p-4 text-sm">
+                    <a href="{% url 'comptes:dashboard' %}" class="rounded-lg bg-slate-100 px-3 py-2">Vue d'ensemble</a>
+                    <a href="{% url 'comptes:liste_comptes' %}" class="rounded-lg bg-slate-100 px-3 py-2">Comptes</a>
+                    <a href="{% url 'comptes:liste_mouvements' %}" class="rounded-lg bg-slate-100 px-3 py-2">Mouvements</a>
+                    <a href="{% url 'comptes:liste_transferts' %}" class="rounded-lg bg-slate-100 px-3 py-2">Transferts</a>
+                </nav>
+            </div>
+
+            <main class="p-4 sm:p-6 lg:p-8">
+                {% if messages %}
+                <div class="mb-5 space-y-2">
+                    {% for message in messages %}
+                    <div class="flex items-center gap-3 rounded-xl border px-4 py-3 text-sm {% if message.tags == 'success' %}border-emerald-200 bg-emerald-50 text-emerald-800{% elif message.tags == 'error' %}border-rose-200 bg-rose-50 text-rose-800{% else %}border-blue-200 bg-blue-50 text-blue-800{% endif %}">
+                        <span class="material-symbols-outlined text-[20px]">{% if message.tags == 'success' %}check_circle{% elif message.tags == 'error' %}error{% else %}info{% endif %}</span>
+                        {{ message }}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% block compte_content %}{% endblock %}
+            </main>
+        </div>
+    </div>
 </div>
 {% endblock %}

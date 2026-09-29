@@ -1,0 +1,42 @@
+<div x-show="modalCompte" x-cloak class="fixed inset-0 z-50 overflow-y-auto" aria-modal="true">
+    <div class="flex min-h-full items-center justify-center p-4">
+        <button type="button" class="fixed inset-0 bg-slate-950/40 backdrop-blur-sm" @click="modalCompte=false" aria-label="Fermer"></button>
+        <div class="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+                <div><h2 class="font-semibold text-slate-900">Nouveau compte</h2><p class="text-xs text-slate-500">Compte manuel ou complémentaire</p></div>
+                <button type="button" @click="modalCompte=false" class="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><span class="material-symbols-outlined">close</span></button>
+            </div>
+            <form method="post" action="{% url 'comptes:ajouter_compte' %}" class="space-y-5 p-6">
+                {% csrf_token %}
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div><label class="mb-1 block text-sm font-medium text-slate-700">Code</label><input name="code" required class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm" placeholder="CAISSE-02"></div>
+                    <div><label class="mb-1 block text-sm font-medium text-slate-700">Nom</label><input name="nom" required class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm" placeholder="Caisse secondaire"></div>
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div>
+                        <label class="mb-1 block text-sm font-medium text-slate-700">Type</label>
+                        <select name="type" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm">
+                            <option value="ESPECES">Espèces</option><option value="BANQUE">Banque</option><option value="MOBILE_MONEY">Mobile Money</option><option value="CARTE">Carte</option><option value="PORTEFEUILLE_NUMERIQUE">Portefeuille numérique</option><option value="AUTRE">Autre</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm font-medium text-slate-700">Rôle</label>
+                        <select name="role" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm">
+                            <option value="">Aucun</option><option value="PRINCIPAL">Principal</option><option value="POINT_VENTE">Point de vente</option><option value="CAISSE">Caisse</option><option value="EPARGNE">Épargne</option><option value="ENCAISSEMENT">Encaissement</option><option value="DECAISSEMENT">Décaissement</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid gap-4 sm:grid-cols-3">
+                    <div><label class="mb-1 block text-sm font-medium text-slate-700">Devise</label><select name="devise" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm">{% for devise in devises %}<option value="{{ devise.code }}" {% if devise.code == 'XOF' %}selected{% endif %}>{{ devise.code }}</option>{% endfor %}</select></div>
+                    <div><label class="mb-1 block text-sm font-medium text-slate-700">Solde initial</label><input type="number" step="0.01" name="solde_initial" value="0" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"></div>
+                    <div><label class="mb-1 block text-sm font-medium text-slate-700">Compte SYSCOHADA</label><input name="compte_comptable_code" placeholder="5711" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"></div>
+                </div>
+                <input type="hidden" name="actif" value="on">
+                <div class="flex justify-end gap-3 border-t border-slate-100 pt-4">
+                    <button type="button" @click="modalCompte=false" class="rounded-xl px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100">Annuler</button>
+                    <button type="submit" class="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-800">Créer le compte</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
