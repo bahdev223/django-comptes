@@ -1,3 +1,4 @@
+import importlib
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -14,7 +15,6 @@ from comptes.models import (
     TypeCompte,
 )
 from comptes.views import comptes as comptes_views
-from comptes.views import dashboard as dashboard_view
 from comptes.views import journal as journal_views
 from comptes.views import mouvements as mouvement_views
 from comptes.views import rapprochement as rapprochement_views
@@ -194,9 +194,10 @@ class HtmlTenantSecurityTest(TestCase):
     @override_settings(COMPTES=HTML_TENANT_SETTINGS)
     def test_dashboard_est_scope(self):
         request = self.request()
-        with patch("comptes.views.dashboard.render") as mocked:
+        dashboard_module = importlib.import_module("comptes.views.dashboard")
+        with patch.object(dashboard_module, "render") as mocked:
             mocked.return_value.status_code = 200
-            dashboard_view(request)
+            dashboard_module.dashboard(request)
         context = mocked.call_args.args[2]
         self.assertEqual(list(context["comptes"]), [self.compte_a])
         self.assertEqual(context["synthese"]["nb_comptes_actifs"], 1)
