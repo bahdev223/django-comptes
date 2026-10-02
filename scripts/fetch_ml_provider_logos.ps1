@@ -89,7 +89,12 @@ New-LogoFallback (Join-Path $root "banks\coris-bank.svg") "Coris Bank" "#f9b000"
 New-LogoFallback (Join-Path $root "banks\uba.svg") "UBA" "#d71920" "#ffffff"
 New-LogoFallback (Join-Path $root "banks\orabank.svg") "Orabank" "#00a3ad" "#ffffff"
 
-New-LogoFromUrl (Join-Path $root "mobile-money\orange-money.svg") "https://www.orangemali.com/2/menu_resources/uploads/logo_1.png" "Orange Money"
+# Le logo Orange Money est maintenu dans le dépôt à partir de l’asset de marque validé.
+# Ne pas le remplacer automatiquement par l’ancien logo récupéré depuis le site Orange Mali.
+$orangeMoneyLogo = Join-Path $root "mobile-money\orange-money.svg"
+if (-not (Test-Path -LiteralPath $orangeMoneyLogo)) {
+    throw "Logo Orange Money manquant: $orangeMoneyLogo"
+}
 New-LogoFallback (Join-Path $root "mobile-money\moov-money.svg") "Moov Money" "#005bbb" "#ffffff"
 New-LogoFromUrl (Join-Path $root "mobile-money\sama-money.svg") "https://www.sama.money/img/logov2.jpg" "Sama Money"
 New-LogoFromUrl (Join-Path $root "mobile-money\wave.svg") "https://www.wave.com/img/nav-logo.png" "Wave"
