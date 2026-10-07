@@ -16,6 +16,37 @@ Le package est conçu pour servir aussi bien une application **mono-entreprise**
 
 > La protection fournie est une immutabilité applicative renforcée, pas un registre cryptographiquement inviolable ni une protection contre un administrateur SQL.
 
+## Mobile Money et frontière PI-SPI
+
+`django-comptes` tient un **registre interne de trésorerie**. Les services
+`encaisser`, `decaisser` et `transferer` enregistrent des mouvements et modifient
+les soldes locaux. Ils n'envoient aucun ordre à une banque, à un opérateur Mobile
+Money ou à PI-SPI, et ne calculent aucun frais ni commission.
+
+`POST /transferts/transferer/` enregistre une sortie et une entrée de même montant
+entre deux comptes de la même entreprise. Le succès de cette action et le signal
+`transfert_effectue` confirment l'enregistrement interne, **pas l'exécution d'un
+paiement externe**. Une réception provenant d'un compte extérieur au registre
+s'enregistre avec `encaisser`, après confirmation externe ; elle ne nécessite pas
+de créer un faux compte source.
+
+`FinancialProvider` désigne le fournisseur commercial du compte. PI-SPI est un
+rail de paiement distinct : il ne doit pas remplacer Orange Money, Moov Money,
+Wave ou une banque dans ce référentiel. `selectable=True` ne prouve aucune
+connexion à PI-SPI.
+
+L'[Avis BCEAO n°0019 du 2 octobre 2026](https://www.bceao.int/fr/reglementations/avis-ndeg0019-relatif-aux-transactions-de-monnaie-electronique-entre-personnes)
+ne nécessite donc aucun changement de routage ou de tarification dans cette
+version du registre. L'application ou le connecteur qui exécute réellement les
+transferts doit traiter son périmètre réglementaire, les dates d'effet et les
+conditions tarifaires applicables. Le registre conserve les montants confirmés,
+leurs références et les éventuels frais constatés dans des mouvements distincts,
+sans inventer un tarif ni corriger silencieusement l'historique.
+
+Voir l'[audit des parcours et le contrat d'intégration PI-SPI](docs/PI_SPI_BOUNDARY.md)
+pour les preuves dans le code, les limites du rapprochement et les critères à
+vérifier avant d'ajouter un connecteur de paiement.
+
 ## Installation
 
 ```bash
