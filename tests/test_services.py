@@ -60,6 +60,8 @@ class CompteServiceTest(TestCase):
         )
         nouveau_solde = CompteService.recalculer_solde(compte)
         self.assertEqual(nouveau_solde, Decimal("13000.00"))
+        self.assertEqual(compte.solde_actuel, nouveau_solde)
+        self.assertIsNotNone(compte.dernier_recalcul)
         compte.refresh_from_db()
         self.assertEqual(compte.solde_actuel, Decimal("13000.00"))
         self.assertIsNotNone(compte.dernier_recalcul)

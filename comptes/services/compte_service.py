@@ -142,7 +142,7 @@ class CompteService:
     @staticmethod
     @transaction.atomic
     def recalculer_solde(compte):
-        compte = Compte.objects.select_for_update().get(pk=compte.pk)
+        compte_verrouille = Compte.objects.select_for_update().get(pk=compte.pk)
         contrepassation = MouvementCompte.objects.filter(
             mouvement_parent_id=OuterRef("pk"),
             compte=compte,
@@ -168,7 +168,7 @@ class CompteService:
             default=-F("montant"),
             output_field=DecimalField(max_digits=15, decimal_places=2),
         )
-        nouveau_solde = compte.solde_initial + (
+        nouveau_solde = compte_verrouille.solde_initial + (
             mouvements.aggregate(total=Sum(signe))["total"] or Decimal("0.00")
         )
         compte.solde_actuel = nouveau_solde
