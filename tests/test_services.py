@@ -315,6 +315,18 @@ class MouvementCompteServiceTest(TestCase):
         mvt.refresh_from_db()
         self.assertTrue(mvt.annule)
 
+    def test_recalcul_preserve_le_solde_apres_contrepassation(self):
+        for operation in (MouvementCompteService.encaisser, MouvementCompteService.decaisser):
+            with self.subTest(operation=operation.__name__):
+                original = operation(
+                    compte=self.compte, montant=Decimal("5000.00"),
+                    libelle="Opération à contrepasser", user=self.user,
+                )
+                MouvementCompteService.annuler(original, user=self.user, raison="Erreur")
+                self.compte.refresh_from_db()
+                self.assertEqual(self.compte.solde_actuel, Decimal("50000.00"))
+                self.assertEqual(CompteService.recalculer_solde(self.compte), Decimal("50000.00"))
+
     def test_encaissement_idempotent(self):
         premier = MouvementCompteService.encaisser(
             compte=self.compte,

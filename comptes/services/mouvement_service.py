@@ -263,7 +263,8 @@ class MouvementCompteService:
     @transaction.atomic
     def annuler(mouvement, user, raison=""):
         require_comptes_permission(user, "annuler")
-        mouvement = MouvementCompte.objects.select_for_update().get(pk=mouvement.pk)
+        compte = Compte.objects.select_for_update().get(pk=mouvement.compte_id)
+        mouvement = MouvementCompte.objects.select_for_update().get(pk=mouvement.pk, compte=compte)
         if mouvement.statut == StatutMouvement.ANNULE:
             raise ValueError("Ce mouvement est déjà annulé")
 
@@ -282,13 +283,14 @@ class MouvementCompteService:
             "montant": format(mouvement.montant, "f"),
             "raison": raison or "",
         }
+        libelle = f"ANNULATION - {raison} - {mouvement.libelle}" if raison else f"ANNULATION - {mouvement.libelle}"
         annulation = MouvementCompte.objects.create(
-            compte=mouvement.compte,
+            compte=compte,
             nature=NatureMouvement.ANNULATION,
             statut=StatutMouvement.VALIDE,
             sens=sens_annulation,
             montant=mouvement.montant,
-            libelle=f"ANNULATION - {mouvement.libelle} - {raison}".strip(),
+            libelle=libelle[:255],
             reference=mouvement.reference,
             entreprise_id=mouvement.entreprise_id,
             payload_hash=payload_hash(annulation_payload),
@@ -301,7 +303,7 @@ class MouvementCompteService:
         )
 
         MouvementCompteService._mettre_a_jour_solde(
-            mouvement.compte, annulation.sens, mouvement.montant
+            compte, annulation.sens, mouvement.montant
         )
 
         if get_comptes_setting("EMIT_DOMAIN_EVENTS", True):

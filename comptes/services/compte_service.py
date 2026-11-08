@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Case, DecimalField, F, Sum, When
+from django.db.models import Case, DecimalField, Exists, F, OuterRef, Q, Sum, When
 from django.utils import timezone
 
 from ..models import (
@@ -140,10 +140,18 @@ class CompteService:
         )
 
     @staticmethod
+    @transaction.atomic
     def recalculer_solde(compte):
-        mouvements = MouvementCompte.objects.filter(
+        compte = Compte.objects.select_for_update().get(pk=compte.pk)
+        contrepassation = MouvementCompte.objects.filter(
+            mouvement_parent_id=OuterRef("pk"),
             compte=compte,
-            statut__in=[StatutMouvement.VALIDE, StatutMouvement.RAPPROCHE],
+            nature=NatureMouvement.ANNULATION,
+            statut__in=[StatutMouvement.VALIDE, StatutMouvement.RAPPROCHE, StatutMouvement.ANNULE],
+        )
+        mouvements = MouvementCompte.objects.filter(compte=compte).filter(
+            Q(statut__in=[StatutMouvement.VALIDE, StatutMouvement.RAPPROCHE])
+            | (Q(statut=StatutMouvement.ANNULE) & Exists(contrepassation))
         )
         signe = Case(
             When(sens=SensMouvement.ENTREE, then=F("montant")),

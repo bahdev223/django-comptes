@@ -8,7 +8,7 @@ from django.db import close_old_connections, connection
 from django.test import TransactionTestCase
 
 from comptes.models import Compte, MouvementCompte
-from comptes.services import MouvementCompteService
+from comptes.services import CompteService, MouvementCompteService
 
 
 User = get_user_model()
@@ -70,3 +70,38 @@ class MovementConcurrencyTest(TransactionTestCase):
         )
         self.compte.refresh_from_db()
         self.assertEqual(self.compte.solde_actuel, Decimal("60000.00"))
+
+    def test_contrepassations_concurrentes_preservent_le_solde(self):
+        self.user.user_permissions.add(Permission.objects.get(codename="annuler"))
+        movements = [
+            MouvementCompteService.encaisser(
+                compte=self.compte, montant=Decimal("10000.00"), libelle="Encaissement", user=self.user,
+            )
+            for _ in range(2)
+        ]
+        barrier = threading.Barrier(2)
+        errors = []
+
+        def worker(movement_id):
+            close_old_connections()
+            try:
+                movement = MouvementCompte.objects.get(pk=movement_id)
+                user = User.objects.get(pk=self.user.pk)
+                barrier.wait(timeout=10)
+                MouvementCompteService.annuler(movement, user=user, raison="Erreur")
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                close_old_connections()
+
+        threads = [threading.Thread(target=worker, args=(movement.pk,)) for movement in movements]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=20)
+
+        self.assertTrue(all(not thread.is_alive() for thread in threads))
+        self.assertEqual(errors, [])
+        self.compte.refresh_from_db()
+        self.assertEqual(self.compte.solde_actuel, Decimal("50000.00"))
+        self.assertEqual(CompteService.recalculer_solde(self.compte), Decimal("50000.00"))
